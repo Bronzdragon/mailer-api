@@ -1,0 +1,27 @@
+---
+ip: "192.168.7.7"
+memory: 1024
+cpus: 2
+
+authorize:
+    - ~/.ssh/id_rsa.pub
+    - ~/.ssh/id_dsa.pub
+
+keys:
+    - ~/.ssh/id_rsa
+    - ~/.ssh/id_dsa
+
+networking:
+    - public: true
+
+folders:
+#    - map: example-folder
+#      to: /path/in/vagrant/example-folder
+
+sites:
+  - hostname: mail-api
+    to: /vagrant/app/public/
+
+databases:
+    # - example_database
+    - mailer_api
