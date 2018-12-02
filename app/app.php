@@ -17,13 +17,14 @@ class MailerAPI {
   {
     R::setup();
     $this->config = $this->LoadConfig(CONFIG_LOCATION);
-    //$this->SetupDB($this->config->database);
+    $this->SetupDB($this->config->database);
   }
 
   public function HandleRequest($method, $apiEndpoint, $headers, $jsonRequest = '')
   {
     if (!$this->isAuthenticated()) {
       // Send response asking for authentication.
+      $response->headers["http_response_code"] = 401;
     }
 
     $response = new Response();
@@ -36,9 +37,10 @@ class MailerAPI {
     }
 
     if (strpos($apiEndpoint, "api/lists") === 0) { // If it is a valid API request
-      // code...
+      return $response;
     }
 
+    $response->headers["http_response_code"] = 400;
     //TODO: If no other part matches, send instructions on how to use the API.
     return $response;
   }
@@ -56,6 +58,7 @@ class MailerAPI {
 
   private function SetupDB($database)
   {
+    if(R::testConnection()) return;
     switch (strtolower($database->type)) {
       case "mysql": // Falls through
       case "pgsql":

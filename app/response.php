@@ -7,7 +7,7 @@ class Response
   public $body;
 
   public function __construct() {
-    $this->headers = [];
+    $this->headers = ["http_response_code" => 200];
     $this->body = new \stdClass;
   }
 
