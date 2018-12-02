@@ -24,7 +24,7 @@ class MailerAPI {
   {
     if (!$this->isAuthenticated()) {
       // Send response asking for authentication.
-      $response->headers["http_response_code"] = 401;
+      $response->responseCode = 401;
     }
 
     $response = new Response();
@@ -40,7 +40,7 @@ class MailerAPI {
       return $response;
     }
 
-    $response->headers["http_response_code"] = 400;
+    $response->responseCode = 400;
     //TODO: If no other part matches, send instructions on how to use the API.
     return $response;
   }
@@ -58,7 +58,8 @@ class MailerAPI {
 
   private function SetupDB($database)
   {
-    if(R::testConnection()) return;
+    if(R::testConnection()) return; // If the Database is already set up, quit out early.
+
     switch (strtolower($database->type)) {
       case "mysql": // Falls through
       case "pgsql":

@@ -26,7 +26,7 @@ $jsonRequest = file_get_contents('php://input');
 
 $response = $app->HandleRequest($requestMethod, $apiEndpoint, $headers, $jsonRequest);
 // var_dump($response);
-http_response_code($response->headers["http_response_code"]);
+http_response_code($response->responseCode);
 echo $response->BodyToJson();
 
 // echo "API endpoint: {$_SERVER["REQUEST_URI"]}\n";

@@ -5,10 +5,12 @@ class Response
 {
   public $headers;
   public $body;
+  public $responseCode;
 
   public function __construct() {
-    $this->headers = ["http_response_code" => 200];
+    $this->headers = [];
     $this->body = new \stdClass;
+    $this->responseCode = 200;
   }
 
   public function BodyToJson()
