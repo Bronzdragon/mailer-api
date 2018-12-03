@@ -10,7 +10,7 @@ class Response
   public function __construct() {
     $this->headers = [];
     $this->body = new \stdClass;
-    $this->responseCode = 200;
+    $this->code = 200;
   }
 
   public function BodyToJson()

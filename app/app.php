@@ -20,11 +20,11 @@ class MailerAPI {
     $this->SetupDB($this->config->database);
   }
 
-  public function HandleRequest($method, $apiEndpoint, $headers, $requestBody)
+  public function HandleRequest($method, $apiEndpoint, $headers, $request)
   {
     if (!$this->isAuthenticated()) {
       // Send response asking for authentication.
-      $response->responseCode = 401;
+      $response->code = 401;
     }
 
     $response = new Response();
@@ -37,39 +37,40 @@ class MailerAPI {
           $user = R::find('user', 'name = ? LIMIT 1', ['James']);
 
           if (!$user) {
-            $response->responseCode = 404;
+            $response->code = 404;
             return $response;
           }
-          $response->responseCode = 200;
+
+          $response->code = 200;
           $response->body->name = $user->name;
 
           return $response;
           break;
         case 'POST':
-          if (!isset($requestBody->name)) {
-            $response->responseCode = 400;
+          if (!isset($request->name)){
+            $response->code = 400;
             return $response;
           }
 
           $user = R::findOne('user', ' name = ? ', [$requestBody->name]);
           // var_dump($user, $requestBody->name);
           if ($user) {
-            $response->responseCode = 409;
+            $response->code = 409;
             return $response;
           }
 
           $user = R::dispense('user');
-          $user->name = $requestBody->name;
+          $user->name = $request->name;
           $userId = R::store($user);
           $response->body = R::dump($user);
 
-          $response->responseCode = 201;
+          $response->code = 201;
           return $response;
           break;
         case 'DELETE';
           //TODO: Insert deleting code.
         default:
-          $response->responseCode = 501;
+          $response->code = 501;
           return $response;
           break;
       }
@@ -83,7 +84,7 @@ class MailerAPI {
       return $response;
     }
 
-    $response->responseCode = 400;
+    $response->code = 400;
     //TODO: If no other part matches, send instructions on how to use the API.
     return $response;
   }
