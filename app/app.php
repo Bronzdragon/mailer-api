@@ -51,24 +51,26 @@ class MailerAPI {
             return $response;
           }
 
-          $user = R::find('user', 'name = ? LIMIT 1', [$requestBody->name]);
-          var_dump($user);
+          $user = R::findOne('user', ' name = ? ', [$requestBody->name]);
+          // var_dump($user, $requestBody->name);
           if ($user) {
-            $response->responseCode = 201;
+            $response->responseCode = 409;
             return $response;
           }
 
           $user = R::dispense('user');
           $user->name = $requestBody->name;
           $userId = R::store($user);
-          $response->responseCode = 201;
+          $response->body = R::dump($user);
 
+          $response->responseCode = 201;
           return $response;
           break;
         case 'DELETE';
           //TODO: Insert deleting code.
         default:
-          // Invalid method. HTTP 501
+          $response->responseCode = 501;
+          return $response;
           break;
       }
       $response->body->name = $userName;
