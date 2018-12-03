@@ -27,6 +27,8 @@ $jsonRequest = json_decode(file_get_contents('php://input'));
 $response = $app->HandleRequest($requestMethod, $apiEndpoint, $headers, $jsonRequest);
 
 http_response_code($response->responseCode);
-echo $response->BodyToJson();
+if (!empty(\get_object_vars($response))) { // If the response has any entries to display.
+  echo $response->BodyToJson();
+}
 
 ?>

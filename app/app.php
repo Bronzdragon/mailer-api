@@ -43,17 +43,17 @@ class MailerAPI {
 
           $response->code = 200;
           $response->body->name = $user->name;
+          $response->body->email = $user->email;
 
           return $response;
           break;
         case 'POST':
-          if (!isset($request->name)){
+          if (!isset($request->name) || !isset($request->email)) {
             $response->code = 400;
             return $response;
           }
 
-          $user = R::findOne('user', ' name = ? ', [$requestBody->name]);
-          // var_dump($user, $requestBody->name);
+          $user = R::findOne('user', ' name = ? AND email = ?', [$request->name, $request->email]);
           if ($user) {
             $response->code = 409;
             return $response;
@@ -61,14 +61,13 @@ class MailerAPI {
 
           $user = R::dispense('user');
           $user->name = $request->name;
+          $user->email = $request->email;
           $userId = R::store($user);
           $response->body = R::dump($user);
 
           $response->code = 201;
           return $response;
           break;
-        case 'DELETE';
-          //TODO: Insert deleting code.
         default:
           $response->code = 501;
           return $response;
