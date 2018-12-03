@@ -20,7 +20,7 @@ class MailerAPI {
     $this->SetupDB($this->config->database);
   }
 
-  public function HandleRequest($method, $apiEndpoint, $headers, $jsonRequest = '')
+  public function HandleRequest($method, $apiEndpoint, $headers, $requestBody)
   {
     if (!$this->isAuthenticated()) {
       // Send response asking for authentication.
@@ -28,15 +28,56 @@ class MailerAPI {
     }
 
     $response = new Response();
-    $response->body->endpoint = $apiEndpoint;
-    // "#api/account/([\/]*)/?#"
-    if (preg_match("#api/account/([^/]*)/?#i", $apiEndpoint, $allMatches) === 1) {
-      $userName = $allMatches[1];
+    $method = strtoupper($method);
+    //$response->body->endpoint = $apiEndpoint;
+    if (preg_match("#^/api/account/?$#i", $apiEndpoint) === 1) {
+      switch ($method) {
+        case 'GET':
+          //TODO: Find authenticated user.
+          $user = R::find('user', 'name = ? LIMIT 1', ['James']);
+
+          if (!$user) {
+            $response->responseCode = 404;
+            return $response;
+          }
+          $response->responseCode = 200;
+          $response->body->name = $user->name;
+
+          return $response;
+          break;
+        case 'POST':
+          if (!isset($requestBody->name)) {
+            $response->responseCode = 400;
+            return $response;
+          }
+
+          $user = R::find('user', 'name = ? LIMIT 1', [$requestBody->name]);
+          var_dump($user);
+          if ($user) {
+            $response->responseCode = 201;
+            return $response;
+          }
+
+          $user = R::dispense('user');
+          $user->name = $requestBody->name;
+          $userId = R::store($user);
+          $response->responseCode = 201;
+
+          return $response;
+          break;
+        case 'DELETE';
+          //TODO: Insert deleting code.
+        default:
+          // Invalid method. HTTP 501
+          break;
+      }
       $response->body->name = $userName;
       return $response;
     }
 
-    if (strpos($apiEndpoint, "api/lists") === 0) { // If it is a valid API request
+    if (preg_match("#^/api/lists.*$#i", $apiEndpoint) === 1) { // If it is a valid API request
+      //TODO: Deal with this stuff.
+      $response->body->TODO = "Complete this.";
       return $response;
     }
 

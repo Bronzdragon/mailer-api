@@ -22,22 +22,11 @@ if (!function_exists('getallheaders')) {
 $apiEndpoint = $_SERVER["REQUEST_URI"];
 $requestMethod = $_SERVER['REQUEST_METHOD'];
 $headers = getallheaders();
-$jsonRequest = file_get_contents('php://input');
+$jsonRequest = json_decode(file_get_contents('php://input'));
 
 $response = $app->HandleRequest($requestMethod, $apiEndpoint, $headers, $jsonRequest);
-// var_dump($response);
+
 http_response_code($response->responseCode);
 echo $response->BodyToJson();
-
-// echo "API endpoint: {$_SERVER["REQUEST_URI"]}\n";
-// echo "json contents: {$jsonRequest}\n";
-//
-// echo "\nHeaders:\n";
-// foreach ($headers as $name => $header) {
-//   if (is_string($header)) {
-//     echo "{$name}: {$header}\n";
-//   }
-// }
-
 
 ?>
