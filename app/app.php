@@ -22,19 +22,21 @@ class MailerAPI {
 
   public function HandleRequest($method, $apiEndpoint, $headers, $request)
   {
-    if (!$this->isAuthenticated()) {
-      // Send response asking for authentication.
-      $response->code = 401;
-    }
 
     $response = new Response();
     $method = strtoupper($method);
-    //$response->body->endpoint = $apiEndpoint;
+
+    if (!$this->isAuthenticated()) {
+      $response->code = 401;
+      //TODO: Send response asking for authentication.
+      return $response;
+    }
+
     if (preg_match("#^/api/account/?$#i", $apiEndpoint) === 1) {
       switch ($method) {
         case 'GET':
-          //TODO: Find authenticated user.
-          $user = R::find('user', 'name = ? LIMIT 1', ['James']);
+          $username = 'Dave'; //TODO: Find authenticated user.
+          $user = R::findOne('user', 'name = ?', [$username]);
 
           if (!$user) {
             $response->code = 404;
@@ -77,9 +79,15 @@ class MailerAPI {
       return $response;
     }
 
-    if (preg_match("#^/api/lists.*$#i", $apiEndpoint) === 1) { // If it is a valid API request
-      //TODO: Deal with this stuff.
-      $response->body->TODO = "Complete this.";
+    if (preg_match("#^/api/lists/?$#i", $apiEndpoint) === 1) {
+      if ($method !== "GET") {
+        $response->code = 501;
+        return $response;
+      }
+      $username = 'Dave'; //TODO: Find authenticated user.
+      $user = R::findOne('user', 'name = ?', [$username]);
+
+      $response->code = 200;
       return $response;
     }
 

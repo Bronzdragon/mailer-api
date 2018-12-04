@@ -3,6 +3,7 @@ namespace MailerAPI;
 require_once '../response.php';
 require_once '../app.php';
 
+
 $app = new MailerAPI();
 
 if (!function_exists('getallheaders')) {
@@ -26,6 +27,7 @@ $jsonRequest = json_decode(file_get_contents('php://input'));
 
 $response = $app->HandleRequest($requestMethod, $apiEndpoint, $headers, $jsonRequest);
 
+header('Content-Type: application/json');
 http_response_code($response->responseCode);
 if (!empty(\get_object_vars($response))) { // If the response has any entries to display.
   echo $response->BodyToJson();
