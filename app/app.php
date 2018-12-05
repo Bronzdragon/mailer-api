@@ -198,6 +198,31 @@ class MailerAPI {
       }
     }
 
+    if (preg_match('^api/lists/[^/]+/(.+@[^/]+)/?$#i', $apiEndpoint, $matches) === 1) {
+      $username = 'Dave'; //TODO: Find authenticated user.
+      $user = R::findOne('user', 'name = ?', [$username]);
+
+      list( 1 => $listName, 2 => $subscriberName ) = $matches; // grab the second and third REGEX match.
+
+      switch ($method) {
+        case 'GET':
+          $mailingList = reset($user
+            ->withCondition(' name = ? LIMIT 1 ', [$listName])
+            ->xownMailinglistList);
+        case 'PUT':
+          // code...
+        case 'DELETE':
+          // code...
+        case 'PATCH':
+          // code...
+        default:
+          $response->code = 501;
+          return $response;
+          break;
+      }
+
+    }
+
     $response->code = 400;
     //TODO: This is not a valid endpoint. Send instructions on how to use the API.
     return $response;
