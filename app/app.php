@@ -100,21 +100,6 @@ class MailerAPI {
       $listName = $matches[1];
 
       switch ($method) {
-        case 'POST':
-          //TODO: Decide if we want to keep this.
-          $mailingList = R::dispense('mailinglist');
-          $mailingList->name = $listName;
-          $user->noLoad()->xownMailinglistList[] = $mailingList;
-
-          // TODO: Allow adding subscribers here.
-          R::store($user);
-
-          $response->code = 201;
-          $response->body['message'] = 'List created.';
-
-          return $response;
-          break;
-
         case 'GET':
           $mailingList = reset($user
             ->withCondition(' name = ? LIMIT 1 ', [$listName])
@@ -128,7 +113,30 @@ class MailerAPI {
 
           $response->code = 200;
           $response->body['list'] = [ 'name' => $mailingList->name ];
-          //TODO: List people in the list.
+          $subscriberList = [];
+          foreach($mailingList->xownSubscriberList as $subscriber){
+            $subscriberList[] = [
+              "id" => $subscriber->id,
+              "name" => $subscriber->name,
+              "email" => $subscriber->email,
+              "state" => $subscriber->state,
+            ];
+          }
+          $response->body['subscribers'] = $subscriberList;
+          return $response;
+          break;
+        case 'POST':
+          //TODO: Decide if we want to keep this.
+          $mailingList = R::dispense('mailinglist');
+          $mailingList->name = $listName;
+          $user->noLoad()->xownMailinglistList[] = $mailingList;
+
+          // TODO: Allow adding subscribers here.
+          R::store($user);
+
+          $response->code = 201;
+          $response->body['message'] = 'List created.';
+
           return $response;
           break;
         case 'PUT':
