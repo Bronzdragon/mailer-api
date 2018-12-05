@@ -87,6 +87,7 @@ class MailerAPI {
       $username = 'Dave'; //TODO: Find authenticated user.
       $user = R::findOne('user', 'name = ?', [$username]);
 
+      // TODO: print out all lists
       $user->xownMailinglistList;
       $response->code = 200;
       return $response;
@@ -100,25 +101,41 @@ class MailerAPI {
 
       switch ($method) {
         case 'GET':
-          $list = R::findOne('mailinglist', '(name = ? AND user = ?)', [$listName, $user]);
-          if (!$list) {
+          $mailingList = reset($user
+            ->withCondition(' name = ? LIMIT 1 ', [$listName])
+            ->xownMailinglistList);
+
+          if ($mailingList === false) {
             $response->code = 404;
             $response->body['error'] = 'No list by that name.';
             return $response;
           }
+
           $response->code = 200;
-          $response->body['list'] = [ 'name' => $list->name ];
+          $response->body['list'] = [ 'name' => $mailingList->name ];
           //TODO: List people in the list.
           return $response;
           break;
         case 'PUT':
+          $isNewList = false;
           if (!isset($request->entries) || !is_array($request->entries)){
             $response->code = 400;
             $response->body['error'] = "Did not provide a new list.";
             return $response;
           }
-          $mailingList = R::findOneOrDispense('mailinglist', '(name = ? AND user = ?)', [$listName, $user]);
 
+          $mailingList = reset($user
+            ->withCondition(' name = ? LIMIT 1', [$listName])
+            ->xownMailinglistList);
+
+          if ($mailingList === false) {
+            $mailingList = R::dispense('mailinglist');
+            $mailingList->name = $listName;
+            $user->noLoad()->xownMailinglistList[] = $mailingList;
+            $isNewList = true;
+          }
+
+          $mailingList->xownSubscriberList = array();
           foreach ($request->entries as $entry) {
             if (!$this->checkSubscriber($entry)) {
               continue;
@@ -128,17 +145,21 @@ class MailerAPI {
             $subscriber->email = $entry->email;
             $subscriber->state = $entry->state;
 
+            // TODO: Process fields as well.
+
             $mailingList->xownSubscriberList[] = $subscriber;
           }
 
-          R::store($mailingList);
-
+          R::store($user);
           $response->code = 201;
+          $message = "Subscriber list '{$mailingList->name}' ";
+          $message .= ($isNewList ? 'created.' : 'updated.');
+          $response->body['message'] = $message;
 
           return $response;
           break;
         case 'DELETE':
-          // code...
+      
           return $response;
           break;
         case 'PATCH':
