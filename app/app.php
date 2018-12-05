@@ -101,10 +101,12 @@ class MailerAPI {
 
       switch ($method) {
         case 'POST':
-          //TODO: Make this obsolete.
+          //TODO: Decide if we want to keep this.
           $mailingList = R::dispense('mailinglist');
           $mailingList->name = $listName;
           $user->noLoad()->xownMailinglistList[] = $mailingList;
+
+          // TODO: Allow adding subscribers here.
           R::store($user);
 
           $response->code = 201;
@@ -172,7 +174,7 @@ class MailerAPI {
           return $response;
           break;
         case 'DELETE':
-      
+
           return $response;
           break;
         case 'PATCH':
