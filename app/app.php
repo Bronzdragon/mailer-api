@@ -174,6 +174,19 @@ class MailerAPI {
           return $response;
           break;
         case 'DELETE':
+          $mailingList = reset($user
+            ->withCondition(' name = ? LIMIT 1', [$listName])
+            ->xownMailinglistList);
+
+          if ($mailingList === false) {
+            $response->code = 404;
+            $response->body['error'] = "No mailing list found with this name.";
+            return $response;
+          }
+
+          R::trash($mailingList);
+          $response->code = 200;
+          $response->body['message'] = "Mailing list '{$mailingList->name}' has been deleted.";
 
           return $response;
           break;
