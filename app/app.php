@@ -36,7 +36,7 @@ class MailerAPI {
           $username = 'Dave'; //TODO: Find authenticated user.
           $user = R::findOne('user', 'name = ?', [$username]);
 
-          if (!$user) {
+          if (!$user->id) {
             $response->code = 404;
             return $response;
           }
@@ -54,7 +54,7 @@ class MailerAPI {
           }
 
           $user = R::findOne('user', ' name = ? AND email = ?', [$request->name, $request->email]);
-          if ($user) {
+          if ($user->id) {
             $response->code = 409;
             return $response;
           }
@@ -87,9 +87,15 @@ class MailerAPI {
       $username = 'Dave'; //TODO: Find authenticated user.
       $user = R::findOne('user', 'name = ?', [$username]);
 
-      // TODO: print out all lists
-      $user->xownMailinglistList;
+      foreach ($user->xownMailinglistList as $mailingList) {
+        $MailingListArray[] = [
+          "name" => $mailingList->name,
+          "subscriberCount" => count($mailingList->xownSubscriberList)
+        ];
+      }
+
       $response->code = 200;
+      $response->body["mailing-lists"] = $MailingListArray;
       return $response;
     }
 
@@ -113,7 +119,7 @@ class MailerAPI {
 
           $response->code = 200;
           $response->body['list'] = [ 'name' => $mailingList->name ];
-          $subscriberList = [];
+
           foreach($mailingList->xownSubscriberList as $subscriber){
             $subscriberList[] = [
               "id" => $subscriber->id,
@@ -211,8 +217,6 @@ class MailerAPI {
       $user = R::findOne('user', 'name = ?', [$username]);
 
       list( 1 => $listName, 2 => $subscriberAddress ) = $matches; // grab the second and third REGEX match.
-
-      // $response->body["message"] = "Matched!";
 
       switch ($method) {
         case 'GET':
