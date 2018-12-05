@@ -42,8 +42,8 @@ class MailerAPI {
           }
 
           $response->code = 200;
-          $response->body->name = $user->name;
-          $response->body->email = $user->email;
+          $response->body['name'] = $user->name;
+          $response->body['email'] = $user->email;
 
           return $response;
           break;
@@ -63,6 +63,8 @@ class MailerAPI {
           $user->name = $request->name;
           $user->email = $request->email;
           $userId = R::store($user);
+
+          // TODO:
           $response->body = R::dump($user);
 
           $response->code = 201;
@@ -73,7 +75,7 @@ class MailerAPI {
           return $response;
           break;
       }
-      $response->body->name = $userName;
+      $response->body['name'] = $userName;
       return $response;
     }
 
@@ -101,18 +103,18 @@ class MailerAPI {
           $list = R::findOne('mailinglist', '(name = ? AND user = ?)', [$listName, $user]);
           if (!$list) {
             $response->code = 404;
-            $response->body->error = 'No list by that name.';
+            $response->body['error'] = 'No list by that name.';
             return $response;
           }
           $response->code = 200;
-          $response->body->list = [ 'name' => $list->name ];
+          $response->body['list'] = [ 'name' => $list->name ];
           //TODO: List people in the list.
           return $response;
           break;
         case 'PUT':
           if (!isset($request->entries) || !is_array($request->entries)){
             $response->code = 400;
-            $response->body->error = "Did not provide a new list.";
+            $response->body['error'] = "Did not provide a new list.";
             return $response;
           }
           $mailingList = R::findOneOrDispense('mailinglist', '(name = ? AND user = ?)', [$listName, $user]);

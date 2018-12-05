@@ -9,7 +9,7 @@ class Response
 
   public function __construct() {
     $this->headers = [];
-    $this->body = new \stdClass;
+    $this->body = [];
     $this->code = 200;
   }
 
