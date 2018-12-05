@@ -2,8 +2,8 @@
   "database": {
     "type": "mysql",
     "connectionString": "mysql:host=localhost;dbname=mailer_api",
-    "user": "",
-    "password": ""
+    "user": "vagrant",
+    "password": "vagrant"
   },
   "SessionTimeout":5
 }

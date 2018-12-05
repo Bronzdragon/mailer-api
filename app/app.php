@@ -14,7 +14,7 @@ class MailerAPI {
 
   function __construct()
   {
-    R::setup();
+    // R::setup();
     $this->config = $this->LoadConfig(CONFIG_LOCATION);
     $this->SetupDB($this->config->database);
   }

@@ -15,7 +15,7 @@ class Response
 
   public function BodyToJson()
   {
-    return json_encode($this->body, /*JSON_PRETTY_PRINT +*/ JSON_UNESCAPED_SLASHES);
+    return json_encode($this->body, JSON_PRETTY_PRINT + JSON_UNESCAPED_SLASHES);
   }
 }
 ?>
