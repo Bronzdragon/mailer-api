@@ -100,6 +100,19 @@ class MailerAPI {
       $listName = $matches[1];
 
       switch ($method) {
+        case 'POST':
+          //TODO: Make this obsolete.
+          $mailingList = R::dispense('mailinglist');
+          $mailingList->name = $listName;
+          $user->noLoad()->xownMailinglistList[] = $mailingList;
+          R::store($user);
+
+          $response->code = 201;
+          $response->body['message'] = 'List created.';
+
+          return $response;
+          break;
+
         case 'GET':
           $mailingList = reset($user
             ->withCondition(' name = ? LIMIT 1 ', [$listName])
