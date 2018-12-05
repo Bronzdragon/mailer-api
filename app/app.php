@@ -198,17 +198,44 @@ class MailerAPI {
       }
     }
 
-    if (preg_match('^api/lists/[^/]+/(.+@[^/]+)/?$#i', $apiEndpoint, $matches) === 1) {
+    if (preg_match('#^/api/lists/([^/]+)/(.+@[^/]+)/?$#i', $apiEndpoint, $matches) === 1) {
       $username = 'Dave'; //TODO: Find authenticated user.
       $user = R::findOne('user', 'name = ?', [$username]);
 
-      list( 1 => $listName, 2 => $subscriberName ) = $matches; // grab the second and third REGEX match.
+      list( 1 => $listName, 2 => $subscriberAddress ) = $matches; // grab the second and third REGEX match.
+
+      // $response->body["message"] = "Matched!";
 
       switch ($method) {
         case 'GET':
           $mailingList = reset($user
             ->withCondition(' name = ? LIMIT 1 ', [$listName])
             ->xownMailinglistList);
+
+          if ($mailingList === false) {
+            $response->code = 404;
+            $response->body["error"] = "The mailing list ('{$listName}') was not found.";
+            return $response;
+          }
+
+          $subscriber = reset($mailingList
+            ->withCondition(' email = ? LIMIT 1 ', [$subscriberAddress])
+            ->xownSubscriberList);
+
+          if ($subscriber === false) {
+            $response->code = 404;
+            $response->body["error"] = "There is no subscriber with the address '{$subscriberAddress}' in this mailing list.";
+            return $response;
+          }
+
+          $response->code = 200;
+          $response->body["name"] = $subscriber->name;
+          $response->body["email"] = $subscriber->email;
+
+          // TODO: Add all fields.
+
+          return $response;
+          break;
         case 'PUT':
           // code...
         case 'DELETE':
