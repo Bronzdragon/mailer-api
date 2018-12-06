@@ -166,7 +166,7 @@ class MailerAPI {
 
           $mailingList->xownSubscriberList = array();
           foreach ($request->entries as $entry) {
-            if (!$this->checkSubscriber($entry)) {
+            if ($this->checkSubscriber($entry) !== true) {
               continue;
             }
             $subscriber = R::dispense('subscriber');
@@ -218,18 +218,18 @@ class MailerAPI {
 
       list( 1 => $listName, 2 => $subscriberAddress ) = $matches; // grab the second and third REGEX match.
 
+      $mailingList = reset($user
+        ->withCondition(' name = ? LIMIT 1 ', [$listName])
+        ->xownMailinglistList);
+
+      if ($mailingList === false) {
+        $response->code = 404;
+        $response->body["error"] = "The mailing list ('{$listName}') was not found.";
+        return $response;
+      }
+
       switch ($method) {
         case 'GET':
-          $mailingList = reset($user
-            ->withCondition(' name = ? LIMIT 1 ', [$listName])
-            ->xownMailinglistList);
-
-          if ($mailingList === false) {
-            $response->code = 404;
-            $response->body["error"] = "The mailing list ('{$listName}') was not found.";
-            return $response;
-          }
-
           $subscriber = reset($mailingList
             ->withCondition(' email = ? LIMIT 1 ', [$subscriberAddress])
             ->xownSubscriberList);
@@ -249,7 +249,62 @@ class MailerAPI {
           return $response;
           break;
         case 'PUT':
-          // code...
+          if (!isset($request->email)) {
+            $request->email = $subscriberAddress;
+          }
+          $errorMessage = $this->checkSubscriber($request);
+          // $errorMessage = "Generic error";
+          if($errorMessage !== true){
+            $response->code = 400;
+            $response->body['error'] = $errorMessage;
+            return $response;
+          }
+
+          $subscriber = reset($mailingList
+            ->withCondition(' email = ? LIMIT 1 ', [$subscriberAddress])
+            ->xownSubscriberList);
+
+          $newSubscriber = false;
+          if ($subscriber === false) {
+            $subscriber = R::dispense('subscriber');
+            $mailingList->noLoad()->xownSubscriberList[] = $subscriber;
+            $newSubscriber = true;
+          }
+
+          $subscriber->name = $request->name;
+          $subscriber->email = $request->email;
+          $subscriber->state = $request->state;
+
+          if (isset($request->fields)) {
+            foreach ($request->fields as $jsonField) {
+              switch (gettype($jsonField->value)) {
+                case 'boolean':
+                  $field = R::dispense('boolfield');
+                  break;
+                case 'integer': // Falls through intentially
+                case 'double':
+                  $field = R::dispense('numfield');
+                  break;
+                case 'string':
+                  $field = R::dispense('textfield');
+                  break;
+                default: // invalid type.
+                  break;
+              }
+              $field->name = $jsonField->name;
+              $field->value = $jsonField->value;
+              $subscriber->noLoad()->xownFieldList[] = $field;
+            }
+          }
+
+          R::store($mailingList);
+
+          $response->code = 201;
+          $response->body["message"] = ($newSubscriber ?
+            "New subscriber '{$subscriber->email}' created." :
+            "Subscriber '{$subscriber->email}' updated.");
+          return $response;
+          break;
         case 'DELETE':
           // code...
         case 'PATCH':
@@ -303,24 +358,41 @@ class MailerAPI {
       || !isset($subscriber->email)
       || !isset($subscriber->state) )
     {
-      return false;
+      return 'Email/name/state not set.';
     }
     if (!\is_string($subscriber->name)) {
-      return false;
+      return 'Name is not a string.';
     }
+
     if (filter_var($subscriber->email, FILTER_VALIDATE_EMAIL) === false) {
-      return false;
+      return 'Email not formatted correctly';
     }
+
     $emailDomain = substr($subscriber->email, strrpos($subscriber->email, '@') + 1);
     if (!\checkdnsrr($emailDomain, "MX")) {
-      return false;
+      return 'Email domain is not valid.';
     }
 
     if (!in_array(
       strtolower($subscriber->state),
       ['active', 'unsubscribed', 'junk', 'bounced', 'unconfirmed']))
     {
-      return false;
+      return 'State is not accepted.';
+    }
+    if (isset($subscriber->fields)) {
+      // Checks to see if all of the fields have a value and a name.
+
+      $allFieldsValid = array_reduce($subscriber->fields, function($carry, $field){
+        return $carry;
+        //&& isset($field->name)
+        //&& isset($field->value)
+        //&& in_array(gettype($field->value), ['boolean', 'integer', 'double', 'string']);
+      }, true);
+      if (!$allFieldsValid) {
+
+        return "Invalid JSON: " . json_encode($subscriber->fields);
+        // return 'There is an issue with one of the fields.';
+      }
     }
 
     return true;
