@@ -228,12 +228,12 @@ class MailerAPI {
         return $response;
       }
 
+      $subscriber = reset($mailingList
+        ->withCondition(' email = ? LIMIT 1 ', [$subscriberAddress])
+        ->xownSubscriberList);
+
       switch ($method) {
         case 'GET':
-          $subscriber = reset($mailingList
-            ->withCondition(' email = ? LIMIT 1 ', [$subscriberAddress])
-            ->xownSubscriberList);
-
           if ($subscriber === false) {
             $response->code = 404;
             $response->body["error"] = "There is no subscriber with the address '{$subscriberAddress}' in this mailing list.";
@@ -252,17 +252,12 @@ class MailerAPI {
           if (!isset($request->email)) {
             $request->email = $subscriberAddress;
           }
-          $errorMessage = $this->checkSubscriber($request);
-          // $errorMessage = "Generic error";
-          if($errorMessage !== true){
+
+          if($errorMessage = $this->checkSubscriber($request) !== true){
             $response->code = 400;
             $response->body['error'] = $errorMessage;
             return $response;
           }
-
-          $subscriber = reset($mailingList
-            ->withCondition(' email = ? LIMIT 1 ', [$subscriberAddress])
-            ->xownSubscriberList);
 
           $newSubscriber = false;
           if ($subscriber === false) {
@@ -306,9 +301,20 @@ class MailerAPI {
           return $response;
           break;
         case 'DELETE':
-          // code...
+          if ($subscriber === false) {
+            $response->code = 404;
+            $response->body["error"] = "There is no subscriber with the address '{$subscriberAddress}' in this mailing list.";
+            return $response;
+          }
+
+          R::trash($subscriber);
+
+          $response->code = 200;
+          $response->body["message"] = "Subscriber with address '{$subscriber->email}' has been deleted.";
+          return $response;
+          break;
         case 'PATCH':
-          // code...
+          // TODO: Decide wether to implement this.
         default:
           $response->code = 501;
           return $response;
