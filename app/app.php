@@ -54,7 +54,7 @@ class MailerAPI {
           }
 
           $user = R::findOne('user', ' name = ? AND email = ?', [$request->name, $request->email]);
-          if ($user->id) {
+          if (!is_null($user)) {
             $response->code = 409;
             return $response;
           }
@@ -64,10 +64,16 @@ class MailerAPI {
           $user->email = $request->email;
           $userId = R::store($user);
 
-          // TODO:
-          $response->body = R::dump($user);
-
           $response->code = 201;
+          $response->body = [
+            "message" => "User has created.",
+            "details" => [
+              "id" => $userId,
+              "name" => $user->name,
+              "email" => $user->email
+            ]
+          ];
+
           return $response;
           break;
         default:
