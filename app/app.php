@@ -241,10 +241,27 @@ class MailerAPI {
           }
 
           $response->code = 200;
-          $response->body["name"] = $subscriber->name;
-          $response->body["email"] = $subscriber->email;
+          $response->body['id'] = $subscriber->id;
+          $response->body['name'] = $subscriber->name;
+          $response->body['email'] = $subscriber->email;
 
-          // TODO: Add all fields.
+          // array_values is used because otherwise when it is JSON encoded later,
+          // this Array will be treated as an object with sequentially named objects.
+          $response->body['fields'] = array_values(array_map(function($field){
+            switch ($field->type) {
+              case 'boolean':
+                $value = ($field->value === "true"); // Convert back to boolean
+                break;
+              case 'number':
+                $value = floatval($field->value);
+                break;
+              case 'text': // falls through intentionally
+              default: // If it's somehow not one of these values, let's just output the value.
+                $value = $field->value;
+                break;
+            }
+            return ['name' => $field->name, 'value'=>$value];
+          }, $subscriber->xownFieldList));
 
           return $response;
           break;
@@ -272,22 +289,25 @@ class MailerAPI {
 
           if (isset($request->fields)) {
             foreach ($request->fields as $jsonField) {
+              $field = R::dispense('field');
+              $field->name = $jsonField->name;
               switch (gettype($jsonField->value)) {
                 case 'boolean':
-                  $field = R::dispense('boolfield');
+                  $field->value = ($jsonField->value?"true":"false");
+                  $field->type = 'boolean';
                   break;
                 case 'integer': // Falls through intentially
                 case 'double':
-                  $field = R::dispense('numfield');
+                  $field->value = (string)$jsonField->value;
+                  $field->type = 'number';
                   break;
-                case 'string':
-                  $field = R::dispense('textfield');
+                case 'string': // will handle dates too, since they are encoded as strings in JSON anyway
+                  $field->value = $jsonField->value;
+                  $field->type = 'text';
                   break;
                 default: // invalid type.
                   break;
               }
-              $field->name = $jsonField->name;
-              $field->value = $jsonField->value;
               $subscriber->noLoad()->xownFieldList[] = $field;
             }
           }
@@ -389,10 +409,10 @@ class MailerAPI {
       // Checks to see if all of the fields have a value and a name.
 
       $allFieldsValid = array_reduce($subscriber->fields, function($carry, $field){
-        return $carry;
-        //&& isset($field->name)
-        //&& isset($field->value)
-        //&& in_array(gettype($field->value), ['boolean', 'integer', 'double', 'string']);
+        return $carry
+        && isset($field->name)
+        && isset($field->value)
+        && in_array(gettype($field->value), ['boolean', 'integer', 'double', 'string']);
       }, true);
       if (!$allFieldsValid) {
 
