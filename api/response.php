@@ -8,9 +8,8 @@ class Response
   public $responseCode;
 
   public function __construct() {
-    $this->headers = [];
-    $this->body = [];
     $this->code = 200;
+    $this->body = [];
   }
 
   public function BodyToJson()

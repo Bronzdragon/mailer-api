@@ -2,8 +2,9 @@
 namespace MailerAPI;
 
 require_once 'rb.php'; //RedBeanPHP
-// require_once 'account.php';
+require_once 'models.php';
 require_once 'response.php';
+
 use R;
 
 define("VERSION", "0.1");
@@ -23,6 +24,7 @@ class MailerAPI {
     $response = new Response();
     $method = strtoupper($method);
 
+
     // No authentication required to make new accounts.
     if (preg_match("#^/api/account/?$#i", $apiEndpoint) === 1 && $method === 'POST') {
       // If they did not provide the right details.
@@ -35,50 +37,38 @@ class MailerAPI {
       $user = R::findOne('user', ' name = ? AND email = ?', [$request->name, $request->email]);
       if (!is_null($user)) {
         $response->code = 409;
-        $response->body["error"] = "User already exists.";
+        $response->body["error"] = "User with that name and email address already exists.";
         return $response;
       }
+
 
       $user = R::dispense('user');
       $user->name = $request->name;
       $user->email = $request->email;
-      $userId = R::store($user);
+
+      $rawApiKey = $this->getNewAPIKey($user->box(), "Master");
+      R::store($user);
 
       $response->code = 201;
       $response->body = [
         "message" => "User has created.",
-        "details" => [
-          "id" => $userId,
-          "name" => $user->name,
-          "email" => $user->email
-        ]
+        "details" => $user->getDetails() + [ "apikey" => $rawApiKey ]
       ];
 
       return $response;
     }
 
-    if (!$this->isAuthenticated($headers)) {
+    $user = $this->getAuthenticatedUser($headers);
+    if (is_null($user)) {
       $response->code = 401;
-      $response->body['headers'] = $headers;
-      //TODO: Send response asking for authentication.
+      $response->body['error'] = 'You must authenticate first.';
       return $response;
     }
 
     if (preg_match("#^/api/account/?$#i", $apiEndpoint) === 1) {
       if ($method === "GET") {
-        $username = 'Dave'; //TODO: Find authenticated user.
-        $user = R::findOne('user', 'name = ?', [$username]);
-
-        if (is_null($user)) {
-          $response->code = 404;
-          $response->body["error"] = "User not found";
-          return $response;
-        }
-
         $response->code = 200;
-        $response->body['name'] = $user->name;
-        $response->body['email'] = $user->email;
-
+        $response->body = $user->getDetails();
         return $response;
       }
 
@@ -86,14 +76,79 @@ class MailerAPI {
       return $response;
     }
 
+    if (preg_match("#^/api/account/keys(?:/(\d+))?/?$#i", $apiEndpoint, $matches) === 1) {
+      $apiKeyIndex = isset($matches[1]) ? (int)$matches[1] : 0;
+      if ($apiKeyIndex > 0) { // when working with a specific keys.
+        $apiKey = reset($user->withCondition(' id = ? ', [$apiKeyIndex])->xownApikeyList);
+
+        if ($apiKey === false) {
+          $response->code = 404;
+          $response->body['error'] = "Could not find an API key with index '$apiKeyIndex'.";
+          return $response;
+        }
+
+        switch ($method) {
+          case 'GET':
+            $response->code = 200;
+            $response->body = [
+              'user' => $user->getDetails(),
+              'key' => $apiKey->getDetails()
+            ];
+
+            return $response;
+            break;
+          case 'DELETE':
+            R::trash($apiKey);
+            $response->code = 200;
+            $response->body = [
+              'message' => 'Key was deleted',
+              'name' => $apiKey->name
+            ];
+            return $response;
+            break;
+        }
+      } else { // No key index provided. Working with all keys.
+        switch ($method) {
+          case 'GET':
+            $response->code = 200;
+            $response->body['user'] = $user->getDetails();
+            foreach ($user->xownApikeyList as $apiKey) {
+              $response->body["keys"][] = $apiKey->getDetails();
+            }
+
+            return $response;
+            break;
+          case 'POST':
+            $keyName = isset($request->name) ? $request->name : "default";
+
+            $rawApiKey = $this->getNewAPIKey($user->box(), $keyName);
+
+            $response->code = 201;
+            $response->body = $rawApiKey;
+            return $response;
+            break;
+          case 'DELETE':
+            $response->code = 405;
+            $response->body['error'] = 'Cannot delete all API keys. This would disable access to your account. Delete the account instead.';
+            return $response;
+            break;
+        }
+      }
+      $response->code = 501;
+      $response->body["message"] = "Targeted API key is $apiKeyIndex.";
+      return $response;
+
+      // $response->code = 200;
+      //
+      // return $response;
+    }
 
     if (preg_match('#^/api/lists/?$#i', $apiEndpoint) === 1) {
       if ($method !== "GET") {
         $response->code = 501;
+        $response->body["error"] = "Invalid method";
         return $response;
       }
-      $username = 'Dave'; //TODO: Find authenticated user.
-      $user = R::findOne('user', 'name = ?', [$username]);
 
       foreach ($user->xownMailinglistList as $mailingList) {
         $MailingListArray[] = [
@@ -108,9 +163,6 @@ class MailerAPI {
     }
 
     if (preg_match('#^/api/lists/([^/]+)/?$#i', $apiEndpoint, $matches) === 1) {
-      $username = 'Dave'; //TODO: Find authenticated user.
-      $user = R::findOne('user', 'name = ?', [$username]);
-
       $listName = $matches[1];
 
       switch ($method) {
@@ -221,9 +273,6 @@ class MailerAPI {
     }
 
     if (preg_match('#^/api/lists/([^/]+)/(.+@[^/]+)/?$#i', $apiEndpoint, $matches) === 1) {
-      $username = 'Dave'; //TODO: Find authenticated user.
-      $user = R::findOne('user', 'name = ?', [$username]);
-
       list( 1 => $listName, 2 => $subscriberAddress ) = $matches; // grab the second and third REGEX match.
 
       $mailingList = reset($user
@@ -432,14 +481,55 @@ class MailerAPI {
     return true;
   }
 
-  private function isAuthenticated()
+  private function getAuthenticatedUser(array $headers)
   {
-    return false;
+    if (!isset($headers['Email']) || !isset($headers["Api-Key"])) {
+      return NULL;
+    }
+
+    $email = $headers['Email'];
+    $apiKey = $headers["Api-Key"];
+    $user = R::findOne('user', ' email = ? ', [$email]);
+    if (is_null($user)) { return NULL; }
+
+    foreach ($user->xownApikeyList as $apiKeyBean) {
+      if (password_verify($apiKey, $apiKeyBean->hash)) {
+        return $user;
+      }
+    }
+
+    return NULL;
   }
 
-  private function getAuthenticationHeaders($userId, $apiKeyId)
+  private function getRandomBytes(int $nbBytes = 32)
   {
-    return [];
+      $bytes = openssl_random_pseudo_bytes($nbBytes, $strong);
+      if (false !== $bytes && true === $strong) {
+          return $bytes;
+      }
+      else {
+          throw new \Exception("Unable to generate secure token from OpenSSL.");
+      }
+  }
+
+  private function generatePasskey(int $length = 32){
+    $newPassword = preg_replace("/[^a-zA-Z0-9]/", "", base64_encode($this->getRandomBytes($length+1)));
+    return strlen($newPassword) >= $length
+      ? substr($newPassword, 0, $length)
+      : $newPassword . $this->generatePasskey($length - strlen($newPassword));
+  }
+
+  private function getNewAPIKey(User $user, string $name = "default"){
+    $userBean = $user->unbox();
+    $raw = $this->generatePasskey();
+
+    $hashed = password_hash($raw, PASSWORD_BCRYPT);
+    $apiKey = R::dispense('apikey');
+    $apiKey->hash = $hashed;
+    $apiKey->name = $name;
+    $userBean->xownApikeyList[] = $apiKey;
+    R::store($userBean);
+
+    return $raw;
   }
 }
-?>
