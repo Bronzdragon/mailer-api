@@ -3,8 +3,9 @@
 const request = require('request-promise');
 
 const baseRequest = request.defaults({
-    "baseUrl": "http://mail-api:8000/API/",
-    "json": true
+  "baseUrl": "http://mail-api:8000/API/",
+  "resolveWithFullResponse": true,
+  "json": true
 });
 
 // console.log("Hello!");

@@ -23,7 +23,11 @@ class MailerAPI {
   {
     $response = new Response();
     $method = strtoupper($method);
-
+    if (preg_match("#^/api/?$#i", $apiEndpoint) === 1 && $method === 'GET') {
+      $response->code = 200;
+      $response->body = ["message" => "Welcome to the Mail API."];
+      return $response;
+    }
 
     // No authentication required to make new accounts.
     if (preg_match("#^/api/account/?$#i", $apiEndpoint) === 1 && $method === 'POST') {
