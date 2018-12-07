@@ -20,7 +20,7 @@ folders:
 
 sites:
   - hostname: mail-api
-    to: /vagrant/app/public/
+    to: /vagrant/api/public/
 
 databases:
     # - example_database

@@ -7,14 +7,13 @@ require_once 'response.php';
 use R;
 
 define("VERSION", "0.1");
-define("CONFIG_LOCATION", "/vagrant/app/config.json");
+define("CONFIG_LOCATION", "/vagrant/api/config.json");
 
 class MailerAPI {
   private $config;
 
   function __construct()
   {
-    // R::setup();
     $this->config = $this->LoadConfig(CONFIG_LOCATION);
     $this->SetupDB($this->config->database);
   }
@@ -24,66 +23,69 @@ class MailerAPI {
     $response = new Response();
     $method = strtoupper($method);
 
-    if (!$this->isAuthenticated()) {
+    // No authentication required to make new accounts.
+    if (preg_match("#^/api/account/?$#i", $apiEndpoint) === 1 && $method === 'POST') {
+      // If they did not provide the right details.
+      if (!isset($request->name) || !isset($request->email)) {
+        $response->code = 400;
+        $response->body["error"] = "Please provide a username and email address.";
+        return $response;
+      }
+
+      $user = R::findOne('user', ' name = ? AND email = ?', [$request->name, $request->email]);
+      if (!is_null($user)) {
+        $response->code = 409;
+        $response->body["error"] = "User already exists.";
+        return $response;
+      }
+
+      $user = R::dispense('user');
+      $user->name = $request->name;
+      $user->email = $request->email;
+      $userId = R::store($user);
+
+      $response->code = 201;
+      $response->body = [
+        "message" => "User has created.",
+        "details" => [
+          "id" => $userId,
+          "name" => $user->name,
+          "email" => $user->email
+        ]
+      ];
+
+      return $response;
+    }
+
+    if (!$this->isAuthenticated($headers)) {
       $response->code = 401;
+      $response->body['headers'] = $headers;
       //TODO: Send response asking for authentication.
       return $response;
     }
 
     if (preg_match("#^/api/account/?$#i", $apiEndpoint) === 1) {
-      switch ($method) {
-        case 'GET':
-          $username = 'Dave'; //TODO: Find authenticated user.
-          $user = R::findOne('user', 'name = ?', [$username]);
+      if ($method === "GET") {
+        $username = 'Dave'; //TODO: Find authenticated user.
+        $user = R::findOne('user', 'name = ?', [$username]);
 
-          if (!$user->id) {
-            $response->code = 404;
-            return $response;
-          }
-
-          $response->code = 200;
-          $response->body['name'] = $user->name;
-          $response->body['email'] = $user->email;
-
+        if (is_null($user)) {
+          $response->code = 404;
+          $response->body["error"] = "User not found";
           return $response;
-          break;
-        case 'POST':
-          if (!isset($request->name) || !isset($request->email)) {
-            $response->code = 400;
-            return $response;
-          }
+        }
 
-          $user = R::findOne('user', ' name = ? AND email = ?', [$request->name, $request->email]);
-          if (!is_null($user)) {
-            $response->code = 409;
-            return $response;
-          }
+        $response->code = 200;
+        $response->body['name'] = $user->name;
+        $response->body['email'] = $user->email;
 
-          $user = R::dispense('user');
-          $user->name = $request->name;
-          $user->email = $request->email;
-          $userId = R::store($user);
-
-          $response->code = 201;
-          $response->body = [
-            "message" => "User has created.",
-            "details" => [
-              "id" => $userId,
-              "name" => $user->name,
-              "email" => $user->email
-            ]
-          ];
-
-          return $response;
-          break;
-        default:
-          $response->code = 501;
-          return $response;
-          break;
+        return $response;
       }
-      $response->body['name'] = $userName;
+
+      $response->code = 501;
       return $response;
     }
+
 
     if (preg_match('#^/api/lists/?$#i', $apiEndpoint) === 1) {
       if ($method !== "GET") {
@@ -432,7 +434,12 @@ class MailerAPI {
 
   private function isAuthenticated()
   {
-    return true;
+    return false;
+  }
+
+  private function getAuthenticationHeaders($userId, $apiKeyId)
+  {
+    return [];
   }
 }
 ?>
