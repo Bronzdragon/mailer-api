@@ -23,14 +23,14 @@ class MailerAPI {
   {
     $response = new Response();
     $method = strtoupper($method);
-    if (preg_match("#^/api/?$#i", $apiEndpoint) === 1 && $method === 'GET') {
+    if (preg_match('#^/api/?$#i', $apiEndpoint) === 1 && $method === 'GET') {
       $response->code = 200;
       $response->body = ["message" => "Welcome to the Mail API."];
       return $response;
     }
 
     // No authentication required to make new accounts.
-    if (preg_match("#^/api/account/?$#i", $apiEndpoint) === 1 && $method === 'POST') {
+    if (preg_match('#^/api/account/?$#i', $apiEndpoint) === 1 && $method === 'POST') {
       // If they did not provide the right details.
       if (!isset($request->name) || !isset($request->email)) {
         $response->code = 400;
@@ -50,13 +50,13 @@ class MailerAPI {
       $user->name = $request->name;
       $user->email = $request->email;
 
-      $rawApiKey = $this->getNewAPIKey($user->box(), "Master");
+      $apiKeyDetails = $this->getNewAPIKey($user->box(), "Master");
       R::store($user);
 
       $response->code = 201;
       $response->body = [
         "message" => "User has created.",
-        "details" => $user->getDetails() + [ "apikey" => $rawApiKey ]
+        "details" => $user->getDetails() + [ "key" => $apiKeyDetails ]
       ];
 
       return $response;
@@ -69,10 +69,22 @@ class MailerAPI {
       return $response;
     }
 
-    if (preg_match("#^/api/account/?$#i", $apiEndpoint) === 1) {
-      if ($method === "GET") {
+    if (preg_match('#^/api/account/?$#i', $apiEndpoint) === 1) {
+      if ($method === 'GET') {
         $response->code = 200;
         $response->body = $user->getDetails();
+        return $response;
+      } elseif ($method === 'DELETE') {
+        if (isset($request->confirmDelete) && $request->confirmDelete === true) {
+          R::trash($user);
+          $response->code = 200;
+          $response->body = [
+            'message' => "User '{$user->name}' was deleted. Goodbye.",
+          ];
+          return $response;
+        }
+        $response->code = 400;
+        $response->body = ['error' => "Please confirm you really wish to delete this account. Please set the 'confirmDelete' flag to true."];
         return $response;
       }
 
@@ -105,7 +117,7 @@ class MailerAPI {
             R::trash($apiKey);
             $response->code = 200;
             $response->body = [
-              'message' => 'Key was deleted',
+              'message' => 'Key has been removed',
               'name' => $apiKey->name
             ];
             return $response;
@@ -125,10 +137,10 @@ class MailerAPI {
           case 'POST':
             $keyName = isset($request->name) ? $request->name : "default";
 
-            $rawApiKey = $this->getNewAPIKey($user->box(), $keyName);
+            $apiKeyDetails = $this->getNewAPIKey($user->box(), $keyName);
 
             $response->code = 201;
-            $response->body = $rawApiKey;
+            $response->body = $apiKeyDetails;
             return $response;
             break;
           case 'DELETE':
@@ -141,10 +153,6 @@ class MailerAPI {
       $response->code = 501;
       $response->body["message"] = "Targeted API key is $apiKeyIndex.";
       return $response;
-
-      // $response->code = 200;
-      //
-      // return $response;
     }
 
     if (preg_match('#^/api/lists/?$#i', $apiEndpoint) === 1) {
@@ -154,6 +162,7 @@ class MailerAPI {
         return $response;
       }
 
+      $MailingListArray = [];
       foreach ($user->xownMailinglistList as $mailingList) {
         $MailingListArray[] = [
           "name" => $mailingList->name,
@@ -182,8 +191,8 @@ class MailerAPI {
           }
 
           $response->code = 200;
-          $response->body['list'] = [ 'name' => $mailingList->name ];
 
+          $subscriberList = [];
           foreach($mailingList->xownSubscriberList as $subscriber){
             $subscriberList[] = [
               "id" => $subscriber->id,
@@ -192,7 +201,10 @@ class MailerAPI {
               "state" => $subscriber->state,
             ];
           }
-          $response->body['subscribers'] = $subscriberList;
+          $response->body = [
+            'name' => $mailingList->name,
+            'subscribers' => $subscriberList
+          ];
           return $response;
           break;
         case 'POST':
@@ -205,50 +217,56 @@ class MailerAPI {
           R::store($user);
 
           $response->code = 201;
-          $response->body['message'] = 'List created.';
+          $response->body = [
+            'message' => 'List created.',
+            'details' => $mailingList->getDetails()
+          ];
 
           return $response;
           break;
         case 'PUT':
           $isNewList = false;
-          if (!isset($request->entries) || !is_array($request->entries)){
-            $response->code = 400;
-            $response->body['error'] = "Did not provide a new list.";
-            return $response;
-          }
 
           $mailingList = reset($user
             ->withCondition(' name = ? LIMIT 1', [$listName])
             ->xownMailinglistList);
 
+          if(isset($request->name)){
+            $listName = $request->name;
+          }
+
           if ($mailingList === false) {
             $mailingList = R::dispense('mailinglist');
-            $mailingList->name = $listName;
             $user->noLoad()->xownMailinglistList[] = $mailingList;
             $isNewList = true;
           }
+          $mailingList->name = $listName;
 
-          $mailingList->xownSubscriberList = array();
-          foreach ($request->entries as $entry) {
-            if ($this->checkSubscriber($entry) !== true) {
-              continue;
+          if (isset($request->entries) && is_array($request->entries)){
+            $mailingList->xownSubscriberList = array();
+            foreach ($request->entries as $entry) {
+              if ($this->checkSubscriber($entry) !== true) {
+                continue;
+              }
+              $subscriber = R::dispense('subscriber');
+              $subscriber->name = $entry->name;
+              $subscriber->email = $entry->email;
+              $subscriber->state = $entry->state;
+
+              // TODO: Process fields as well.
+
+              $mailingList->xownSubscriberList[] = $subscriber;
             }
-            $subscriber = R::dispense('subscriber');
-            $subscriber->name = $entry->name;
-            $subscriber->email = $entry->email;
-            $subscriber->state = $entry->state;
-
-            // TODO: Process fields as well.
-
-            $mailingList->xownSubscriberList[] = $subscriber;
           }
 
           R::store($user);
-          $response->code = 201;
-          $message = "Subscriber list '{$mailingList->name}' ";
-          $message .= ($isNewList ? 'created.' : 'updated.');
-          $response->body['message'] = $message;
-
+          $response->code = ($isNewList ? 201 : 200);
+          $message = "Subscriber list '{$mailingList->name}' "
+            . ($isNewList ? 'created.' : 'updated.');
+          $response->body = [
+            'message' => $message,
+            'details' => $mailingList->getDetails()
+          ];
           return $response;
           break;
         case 'DELETE':
@@ -331,9 +349,12 @@ class MailerAPI {
             $request->email = $subscriberAddress;
           }
 
-          if($errorMessage = $this->checkSubscriber($request) !== true){
+          $errorMessage = $this->checkSubscriber($request);
+          if($errorMessage !== true){
             $response->code = 400;
-            $response->body['error'] = $errorMessage;
+            $response->body = ['error' => 'Provided subscriber is not valid.',
+              'reason' => $errorMessage
+            ];
             return $response;
           }
 
@@ -445,7 +466,7 @@ class MailerAPI {
       || !isset($subscriber->email)
       || !isset($subscriber->state) )
     {
-      return 'Email/name/state not set.';
+      return 'Email address and/or name and/or subscriber state is not set.';
     }
     if (!\is_string($subscriber->name)) {
       return 'Name is not a string.';
@@ -478,7 +499,6 @@ class MailerAPI {
       if (!$allFieldsValid) {
 
         return "Invalid JSON: " . json_encode($subscriber->fields);
-        // return 'There is an issue with one of the fields.';
       }
     }
 
@@ -534,6 +554,6 @@ class MailerAPI {
     $userBean->xownApikeyList[] = $apiKey;
     R::store($userBean);
 
-    return $raw;
+    return $apiKey->getDetails() + [ 'secret' => $raw ];
   }
 }
