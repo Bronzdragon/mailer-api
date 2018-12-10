@@ -65,6 +65,7 @@ class subscriber extends \RedBeanPHP\SimpleModel
     $returnValue = [
       'id' => (int)$this->bean->id,
       'name' => $this->bean->name,
+      'email' => $this->bean->email,
       'state' => $this->bean->state,
     ];
 
@@ -82,9 +83,23 @@ class subscriber extends \RedBeanPHP\SimpleModel
 class field extends \RedBeanPHP\SimpleModel
 {
   public function getDetails(){
+    $value;
+    switch ($this->bean->type) {
+      case 'boolean':
+        $value = ($this->bean->value === "true"); // Convert back to boolean
+        break;
+      case 'number':
+        $value = floatval($this->bean->value);
+        break;
+      case 'text': // falls through intentionally
+      default: // If it's somehow not one of these values, let's just output the value as is.
+        $value = $this->bean->value;
+        break;
+    }
+
     return [
       'name' => $this->bean->name,
-      'value' => $this->bean->value
+      'value' => $value
     ];
   }
 }

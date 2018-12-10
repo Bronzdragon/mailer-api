@@ -315,33 +315,12 @@ class MailerAPI {
         case 'GET':
           if ($subscriber === false) {
             $response->code = 404;
-            $response->body["error"] = "There is no subscriber with the address '{$subscriberAddress}' in this mailing list.";
+            $response->body = ['error' => "There is no subscriber with the address '{$subscriberAddress}' in this mailing list."];
             return $response;
           }
 
           $response->code = 200;
-          $response->body['id'] = $subscriber->id;
-          $response->body['name'] = $subscriber->name;
-          $response->body['email'] = $subscriber->email;
-
-          // array_values is used because otherwise when it is JSON encoded later,
-          // this Array will be treated as an object with sequentially named objects.
-          $response->body['fields'] = array_values(array_map(function($field){
-            switch ($field->type) {
-              case 'boolean':
-                $value = ($field->value === "true"); // Convert back to boolean
-                break;
-              case 'number':
-                $value = floatval($field->value);
-                break;
-              case 'text': // falls through intentionally
-              default: // If it's somehow not one of these values, let's just output the value.
-                $value = $field->value;
-                break;
-            }
-            return ['name' => $field->name, 'value'=>$value];
-          }, $subscriber->xownFieldList));
-
+          $response->body = $subscriber->getDetails(true);
           return $response;
           break;
         case 'PUT':
@@ -397,9 +376,12 @@ class MailerAPI {
           R::store($mailingList);
 
           $response->code = 201;
-          $response->body["message"] = ($newSubscriber ?
-            "New subscriber '{$subscriber->email}' created." :
-            "Subscriber '{$subscriber->email}' updated.");
+          $response->body = [
+            "message" => ($newSubscriber ?
+              "New subscriber '{$subscriber->email}' created." :
+              "Subscriber '{$subscriber->email}' updated."),
+            "details" => $subscriber->getDetails(true)
+          ];
           return $response;
           break;
         case 'DELETE':
@@ -415,8 +397,16 @@ class MailerAPI {
           $response->body["message"] = "Subscriber with address '{$subscriber->email}' has been deleted.";
           return $response;
           break;
+        case 'POST':
+          $response->code = 501;
+          $response->body = ['message' => 'HTTP POST has not been implemented. TODO.'];
+          return $response;
+          break;
         case 'PATCH':
-          // TODO: Decide wether to implement this.
+          $response->code = 501;
+          $response->body = ['message' => 'HTTP PATCH has not been implemented. TODO.'];
+          return $response;
+          break;
         default:
           $response->code = 501;
           return $response;
