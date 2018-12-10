@@ -91,14 +91,12 @@ describe('API', function() {
     });
     describe('Account Viewing', function() {
       let account; // Account used in this section.
-
       before(function() {
         return accountRequest.post({ body: randomAccount() }).then(result => {
           account = result.body.details;
           createdAccounts.push(account);
         });
       });
-
 
       it('Rejects requests that are not authenticated.', function(){
         return accountRequest.get().then(result => {
@@ -719,7 +717,7 @@ describe('API', function() {
           });
         });
       });
-      describe.only('Subscriber Editing', function() {
+      describe('Subscriber Editing', function() {
         it('Reject requests that are not authenticated.', async function() {
           let oldSubscriber   = randomSubscriber();
           let putSubscriber   = randomSubscriber();
@@ -751,7 +749,6 @@ describe('API', function() {
           });
         });
         it('Updates name, email and state.', async function() {
-
           let oldPutSubscriber = randomSubscriber();
           let newPutSubscriber = randomSubscriber();
 
@@ -806,8 +803,46 @@ describe('API', function() {
         });
       });
       describe('Subscriber Deletion', function() {
-        it('Reject requests that are not authenticated.');
-        it('Deletes subscribers from mailing lists.');
+        it('Reject requests that are not authenticated.', async function () {
+          let subscriber = randomSubscriber();
+          await mailingListRequest.post({
+            uri: subscriber.email,
+            body: subscriber
+          }).then((result) => {
+            expect(result).have.property('statusCode').that.is.equal(201);
+          });
+
+          await subscriberRequest.delete({
+            uri: subscriber.email,
+            headers: null
+          }).then(result => {
+            expect(result).have.property('statusCode').that.is.equal(401);
+          });
+
+          return subscriberRequest.get({uri: subscriber.email})
+          .then(result => {
+            expect(result).have.property('statusCode').that.is.equal(200);
+            expect(result).have.property('body').that.is.deep.equal(subscriber);
+          });
+        });
+        it('Deletes subscribers from mailing lists.', async function () {
+          let subscriber = randomSubscriber();
+          await mailingListRequest.post({
+            uri: subscriber.email,
+            body: subscriber
+          });
+
+          await subscriberRequest.delete({
+            uri: subscriber.email
+          }).then(result => {
+            expect(result).have.property('statusCode').that.is.equal(200);
+          });
+
+          return subscriberRequest.get({uri: subscriber.email})
+          .then(result => {
+            expect(result).have.property('statusCode').that.is.equal(404);
+          });
+        });
       });
     });
   });
