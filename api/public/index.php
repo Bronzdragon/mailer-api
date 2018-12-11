@@ -20,16 +20,22 @@ if (!function_exists('getallheaders')) {
   }
 }
 
-$apiEndpoint = $_SERVER["REQUEST_URI"];
-$requestMethod = $_SERVER['REQUEST_METHOD'];
-$headers = getallheaders();
-$jsonRequest = json_decode(file_get_contents('php://input'));
+$request = [
+  'endpoint' => $_SERVER["REQUEST_URI"],
+  'method' => strtolower($_SERVER['REQUEST_METHOD']),
+  'headers' => getallheaders(),
+  'body' => json_decode(file_get_contents('php://input'), true)
+];
 
-$response = $app->HandleRequest($requestMethod, $apiEndpoint, $headers, $jsonRequest);
-
-header('Content-Type: application/json');
+$response = $app->ProcessRequest($request);
 
 http_response_code($response->code);
-echo $response->BodyToJson();
 
-?>
+header('Content-Type: application/json');
+foreach ($response->headers as $header) {
+  header($header);
+}
+
+if (isset($response->body)) {
+  echo $response->BodyToJson();
+}

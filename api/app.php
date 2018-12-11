@@ -11,417 +11,106 @@ define("VERSION", "0.1");
 define("CONFIG_LOCATION", "/vagrant/api/config.json");
 
 class MailerAPI {
-  private $config;
-
-  function __construct()
-  {
+  function __construct() {
     $this->config = $this->LoadConfig(CONFIG_LOCATION);
-    $this->SetupDB($this->config->database);
+    MailerAPI::SetupDB($this->config->database);
   }
 
-  public function HandleRequest($method, $apiEndpoint, $headers, $request)
-  {
-    $response = new Response();
-    $method = strtoupper($method);
-    if (preg_match('#^/api/?$#i', $apiEndpoint) === 1 && $method === 'GET') {
-      $response->code = 200;
-      $response->body = ["message" => "Welcome to the Mail API."];
-      return $response;
+  public function ProcessRequest(array $request) : Response {
+    // Base endpoint.
+    if (preg_match('#^/api/?$#i', $request['endpoint']) === 1) {
+      if ($request['method'] === 'get') {
+        // TODO: create proper introduction
+        return new Response(200, ['message' => 'Welcome to the Mail API.']);
+      }
+      return new Response(501);
     }
 
-    // No authentication required to make new accounts.
-    if (preg_match('#^/api/account/?$#i', $apiEndpoint) === 1 && $method === 'POST') {
-      // If they did not provide the right details.
-      if (!isset($request->name) || !isset($request->email)) {
-        $response->code = 400;
-        $response->body["error"] = "Please provide a username and email address.";
-        return $response;
-      }
-
-      $user = R::findOne('user', ' name = ? AND email = ?', [$request->name, $request->email]);
-      if (!is_null($user)) {
-        $response->code = 409;
-        $response->body["error"] = "User with that name and email address already exists.";
-        return $response;
-      }
-
-
-      $user = R::dispense('user');
-      $user->name = $request->name;
-      $user->email = $request->email;
-
-      $apiKeyDetails = $this->getNewAPIKey($user->box(), "Master");
-      R::store($user);
-
-      $response->code = 201;
-      $response->body = [
-        "message" => "User has created.",
-        "details" => $user->getDetails() + [ "key" => $apiKeyDetails ]
-      ];
-
-      return $response;
-    }
-
-    $user = $this->getAuthenticatedUser($headers);
-    if (is_null($user)) {
-      $response->code = 401;
-      $response->body['error'] = 'You must authenticate first.';
-      return $response;
-    }
-
-    if (preg_match('#^/api/account/?$#i', $apiEndpoint) === 1) {
-      if ($method === 'GET') {
-        $response->code = 200;
-        $response->body = $user->getDetails();
-        return $response;
-      } elseif ($method === 'DELETE') {
-        if (isset($request->confirmDelete) && $request->confirmDelete === true) {
-          R::trash($user);
-          $response->code = 200;
-          $response->body = [
-            'message' => "User '{$user->name}' was deleted. Goodbye.",
-          ];
-          return $response;
-        }
-        $response->code = 400;
-        $response->body = ['error' => "Please confirm you really wish to delete this account. Please set the 'confirmDelete' flag to true."];
-        return $response;
-      }
-
-      $response->code = 501;
-      return $response;
-    }
-
-    if (preg_match("#^/api/account/keys(?:/(\d+))?/?$#i", $apiEndpoint, $matches) === 1) {
-      $apiKeyIndex = isset($matches[1]) ? (int)$matches[1] : 0;
-      if ($apiKeyIndex > 0) { // when working with a specific keys.
-        $apiKey = reset($user->withCondition(' id = ? ', [$apiKeyIndex])->xownApikeyList);
-
-        if ($apiKey === false) {
-          $response->code = 404;
-          $response->body['error'] = "Could not find an API key with index '$apiKeyIndex'.";
-          return $response;
-        }
-
-        switch ($method) {
-          case 'GET':
-            $response->code = 200;
-            $response->body = [
-              'user' => $user->getDetails(),
-              'key' => $apiKey->getDetails()
-            ];
-
-            return $response;
-            break;
-          case 'DELETE':
-            R::trash($apiKey);
-            $response->code = 200;
-            $response->body = [
-              'message' => 'Key has been removed',
-              'name' => $apiKey->name
-            ];
-            return $response;
-            break;
-        }
-      } else { // No key index provided. Working with all keys.
-        switch ($method) {
-          case 'GET':
-            $response->code = 200;
-            $response->body['user'] = $user->getDetails();
-            foreach ($user->xownApikeyList as $apiKey) {
-              $response->body["keys"][] = $apiKey->getDetails();
-            }
-
-            return $response;
-            break;
-          case 'POST':
-            $keyName = isset($request->name) ? $request->name : "default";
-
-            $apiKeyDetails = $this->getNewAPIKey($user->box(), $keyName);
-
-            $response->code = 201;
-            $response->body = $apiKeyDetails;
-            return $response;
-            break;
-          case 'DELETE':
-            $response->code = 405;
-            $response->body['error'] = 'Cannot delete all API keys. This would disable access to your account. Delete the account instead.';
-            return $response;
-            break;
-        }
-      }
-      $response->code = 501;
-      $response->body["message"] = "Targeted API key is $apiKeyIndex.";
-      return $response;
-    }
-
-    if (preg_match('#^/api/lists/?$#i', $apiEndpoint) === 1) {
-      if ($method !== "GET") {
-        $response->code = 501;
-        $response->body["error"] = "Invalid method";
-        return $response;
-      }
-
-      $MailingListArray = [];
-      foreach ($user->xownMailinglistList as $mailingList) {
-        $MailingListArray[] = [
-          "name" => $mailingList->name,
-          "subscriberCount" => count($mailingList->xownSubscriberList)
-        ];
-      }
-
-      $response->code = 200;
-      $response->body["mailing-lists"] = $MailingListArray;
-      return $response;
-    }
-
-    if (preg_match('#^/api/lists/([^/]+)/?$#i', $apiEndpoint, $matches) === 1) {
-      $listName = $matches[1];
-
-      switch ($method) {
-        case 'GET':
-          $mailingList = reset($user
-            ->withCondition(' name = ? LIMIT 1 ', [$listName])
-            ->xownMailinglistList);
-
-          if ($mailingList === false) {
-            $response->code = 404;
-            $response->body['error'] = 'No list by that name.';
-            return $response;
-          }
-
-          $response->code = 200;
-
-          $subscriberList = [];
-          foreach($mailingList->xownSubscriberList as $subscriber){
-            $subscriberList[] = [
-              "id" => $subscriber->id,
-              "name" => $subscriber->name,
-              "email" => $subscriber->email,
-              "state" => $subscriber->state,
-            ];
-          }
-          $response->body = [
-            'name' => $mailingList->name,
-            'subscribers' => $subscriberList
-          ];
-          return $response;
+    // Account endpoint
+    if (preg_match('#^/api/account/?$#i', $request['endpoint']) === 1) {
+      switch ($request['method']) {
+        case 'get':
+          $body = user::getAuthenticatedUser($request['headers'])->getDetails();
+          return new Response(200, $body);
           break;
-        case 'POST':
-          //TODO: Decide if we want to keep this.
-          $mailingList = R::dispense('mailinglist');
-          $mailingList->name = $listName;
-          $user->noLoad()->xownMailinglistList[] = $mailingList;
-
-          // TODO: Allow adding subscribers here.
-          R::store($user);
-
-          $response->code = 201;
-          $response->body = [
-            'message' => 'List created.',
-            'details' => $mailingList->getDetails()
-          ];
-
-          return $response;
+        case 'post':
+          // var_dump($request['body']);
+          return user::createUser($request['body']);
           break;
-        case 'PUT':
-          $isNewList = false;
-
-          $mailingList = reset($user
-            ->withCondition(' name = ? LIMIT 1', [$listName])
-            ->xownMailinglistList);
-
-          if(isset($request->name)){
-            $listName = $request->name;
-          }
-
-          if ($mailingList === false) {
-            $mailingList = R::dispense('mailinglist');
-            $user->noLoad()->xownMailinglistList[] = $mailingList;
-            $isNewList = true;
-          }
-          $mailingList->name = $listName;
-
-          if (isset($request->entries) && is_array($request->entries)){
-            $mailingList->xownSubscriberList = array();
-            foreach ($request->entries as $entry) {
-              if ($this->checkSubscriber($entry) !== true) {
-                continue;
-              }
-              $subscriber = R::dispense('subscriber');
-              $subscriber->name = $entry->name;
-              $subscriber->email = $entry->email;
-              $subscriber->state = $entry->state;
-
-              // TODO: Process fields as well.
-
-              $mailingList->xownSubscriberList[] = $subscriber;
-            }
-          }
-
-          R::store($user);
-          $response->code = ($isNewList ? 201 : 200);
-          $message = "Subscriber list '{$mailingList->name}' "
-            . ($isNewList ? 'created.' : 'updated.');
-          $response->body = [
-            'message' => $message,
-            'details' => $mailingList->getDetails()
-          ];
-          return $response;
+        case 'put':
+          // code...
           break;
-        case 'DELETE':
-          $mailingList = reset($user
-            ->withCondition(' name = ? LIMIT 1', [$listName])
-            ->xownMailinglistList);
-
-          if ($mailingList === false) {
-            $response->code = 404;
-            $response->body['error'] = "No mailing list found with this name.";
-            return $response;
-          }
-
-          R::trash($mailingList);
-          $response->code = 200;
-          $response->body['message'] = "Mailing list '{$mailingList->name}' has been deleted.";
-
-          return $response;
+        case 'patch':
+          // code...
           break;
-        case 'PATCH':
-          // TODO: Implement this?
-        default:
-          $response->code = 501;
-          return $response;
-      }
-    }
-
-    if (preg_match('#^/api/lists/([^/]+)/(.+@[^/]+)/?$#i', $apiEndpoint, $matches) === 1) {
-      list( 1 => $listName, 2 => $subscriberAddress ) = $matches; // grab the second and third REGEX match.
-
-      $mailingList = reset($user
-        ->withCondition(' name = ? LIMIT 1 ', [$listName])
-        ->xownMailinglistList);
-
-      if ($mailingList === false) {
-        $response->code = 404;
-        $response->body["error"] = "The mailing list ('{$listName}') was not found.";
-        return $response;
-      }
-
-      $subscriber = reset($mailingList
-        ->withCondition(' email = ? LIMIT 1 ', [$subscriberAddress])
-        ->xownSubscriberList);
-
-      switch ($method) {
-        case 'GET':
-          if ($subscriber === false) {
-            $response->code = 404;
-            $response->body = ['error' => "There is no subscriber with the address '{$subscriberAddress}' in this mailing list."];
-            return $response;
-          }
-
-          $response->code = 200;
-          $response->body = $subscriber->getDetails(true);
-          return $response;
-          break;
-        case 'PUT':
-          if (!isset($request->email)) {
-            $request->email = $subscriberAddress;
-          }
-
-          $errorMessage = $this->checkSubscriber($request);
-          if($errorMessage !== true){
-            $response->code = 400;
-            $response->body = ['error' => 'Provided subscriber is not valid.',
-              'reason' => $errorMessage
-            ];
-            return $response;
-          }
-
-          $newSubscriber = false;
-          if ($subscriber === false) {
-            $subscriber = R::dispense('subscriber');
-            $mailingList->noLoad()->xownSubscriberList[] = $subscriber;
-            $newSubscriber = true;
-          }
-
-          $subscriber->name = $request->name;
-          $subscriber->email = $request->email;
-          $subscriber->state = $request->state;
-
-          if (isset($request->fields)) {
-            foreach ($request->fields as $jsonField) {
-              $field = R::dispense('field');
-              $field->name = $jsonField->name;
-              switch (gettype($jsonField->value)) {
-                case 'boolean':
-                  $field->value = ($jsonField->value?"true":"false");
-                  $field->type = 'boolean';
-                  break;
-                case 'integer': // Falls through intentially
-                case 'double':
-                  $field->value = (string)$jsonField->value;
-                  $field->type = 'number';
-                  break;
-                case 'string': // will handle dates too, since they are encoded as strings in JSON anyway
-                  $field->value = $jsonField->value;
-                  $field->type = 'text';
-                  break;
-                default: // invalid type.
-                  break;
-              }
-              $subscriber->noLoad()->xownFieldList[] = $field;
-            }
-          }
-
-          R::store($mailingList);
-
-          $response->code = 201;
-          $response->body = [
-            "message" => ($newSubscriber ?
-              "New subscriber '{$subscriber->email}' created." :
-              "Subscriber '{$subscriber->email}' updated."),
-            "details" => $subscriber->getDetails(true)
-          ];
-          return $response;
-          break;
-        case 'DELETE':
-          if ($subscriber === false) {
-            $response->code = 404;
-            $response->body["error"] = "There is no subscriber with the address '{$subscriberAddress}' in this mailing list.";
-            return $response;
-          }
-
-          R::trash($subscriber);
-
-          $response->code = 200;
-          $response->body["message"] = "Subscriber with address '{$subscriber->email}' has been deleted.";
-          return $response;
-          break;
-        case 'POST':
-          $response->code = 501;
-          $response->body = ['message' => 'HTTP POST has not been implemented. TODO.'];
-          return $response;
-          break;
-        case 'PATCH':
-          $response->code = 501;
-          $response->body = ['message' => 'HTTP PATCH has not been implemented. TODO.'];
-          return $response;
+        case 'delete':
+          // code...
           break;
         default:
-          $response->code = 501;
-          return $response;
+          return new Response(501);
           break;
       }
+    }
+
+    // keys endpoint
+    if (preg_match("#^/api/account/keys(?:/(\d+))?/?$#i", $request['endpoint'], $matches) === 1) {
+      $keyid = isset($matches[1]) ? $matches[1] : null;
+      if(is_null($keyid)){
+        switch ($request['method']) {
+          case 'get':
+            // code...
+            break;
+          case 'post':
+            // code...
+            break;
+          default:
+            return new Response(501);
+            break;
+        }
+      } else { // if we're targeting a specific key.
+        switch ($request['method']) {
+          case 'get':
+            // code...
+            break;
+          case 'put':
+            // code...
+            break;
+          case 'patch':
+            // code...
+            break;
+          case 'delete':
+            // code...
+            break;
+          default:
+            return new Response(501);
+            break;
+        }
+      }
+    }
+
+    // Mailing list endpoint
+    if (preg_match('#^/api/mailinglists(?:/(\d+))?/?$#i', $request['endpoint'], $matches) === 1) {
+      $listid = isset($matches[1]) ? $matches[1] : null;
 
     }
 
-    $response->code = 400;
-    //TODO: This is not a valid endpoint. Send instructions on how to use the API.
-    return $response;
+    // Subscriber endpoint
+    if (preg_match('#^/api/mailinglists/(\d+)/subscribers/(?:(\d+))?/?$#i', $request['endpoint'], $matches) === 1) {
+      $listid = $matches[1];
+      $subscriberid = isset($matches[2]) ? $matches[2] : null;
+
+    }
+
+    if (preg_match('#^/api/mailinglists/(\d+)/subscribers/(\d+)/fields/?$#i', $request['endpoint'], $matches) === 1) {
+      $listid = $matches[1];
+      $subscriberid = $matches[2];
+
+    }
+
+    // endpoint invalid.
   }
 
-  public function LoadConfig($configLocation)
-  {
+  public function LoadConfig($configLocation) : stdClass {
     if (empty($configLocation))
     {
       throw new Exception('No config location provided.');
@@ -431,12 +120,11 @@ class MailerAPI {
     return json_decode($json);
   }
 
-  private function SetupDB($database)
-  {
+  private static function SetupDB($database) : void {
     if(R::testConnection()) return; // If the Database is already set up, quit out early.
 
     switch (strtolower($database->type)) {
-      case "mysql": // Falls through
+      case "mysql": // Falls through intentionally
       case "pgsql":
         R::setup($database->connectionString, $database->user, $database->password);
         break;
@@ -445,105 +133,6 @@ class MailerAPI {
         break;
       default:
         R::setup();
-        break;
     }
-  }
-
-  private function checkSubscriber($subscriber)
-  {
-    if ( !isset($subscriber)
-      || !isset($subscriber->name)
-      || !isset($subscriber->email)
-      || !isset($subscriber->state) )
-    {
-      return 'Email address and/or name and/or subscriber state is not set.';
-    }
-    if (!\is_string($subscriber->name)) {
-      return 'Name is not a string.';
-    }
-
-    if (filter_var($subscriber->email, FILTER_VALIDATE_EMAIL) === false) {
-      return 'Email not formatted correctly';
-    }
-
-    $emailDomain = substr($subscriber->email, strrpos($subscriber->email, '@') + 1);
-    if (!\checkdnsrr($emailDomain, "MX")) {
-      return 'Email domain is not valid.';
-    }
-
-    if (!in_array(
-      strtolower($subscriber->state),
-      ['active', 'unsubscribed', 'junk', 'bounced', 'unconfirmed']))
-    {
-      return 'State is not accepted.';
-    }
-    if (isset($subscriber->fields)) {
-      // Checks to see if all of the fields have a value and a name.
-
-      $allFieldsValid = array_reduce($subscriber->fields, function($carry, $field){
-        return $carry
-        && isset($field->name)
-        && isset($field->value)
-        && in_array(gettype($field->value), ['boolean', 'integer', 'double', 'string']);
-      }, true);
-      if (!$allFieldsValid) {
-
-        return "Invalid JSON: " . json_encode($subscriber->fields);
-      }
-    }
-
-    return true;
-  }
-
-  private function getAuthenticatedUser(array $headers)
-  {
-    if (!isset($headers['Email']) || !isset($headers["Api-Key"])) {
-      return NULL;
-    }
-
-    $email = $headers['Email'];
-    $apiKey = $headers["Api-Key"];
-    $user = R::findOne('user', ' email = ? ', [$email]);
-    if (is_null($user)) { return NULL; }
-
-    foreach ($user->xownApikeyList as $apiKeyBean) {
-      if (password_verify($apiKey, $apiKeyBean->hash)) {
-        return $user;
-      }
-    }
-
-    return NULL;
-  }
-
-  private function getRandomBytes(int $nbBytes = 32)
-  {
-      $bytes = openssl_random_pseudo_bytes($nbBytes, $strong);
-      if (false !== $bytes && true === $strong) {
-          return $bytes;
-      }
-      else {
-          throw new \Exception("Unable to generate secure token from OpenSSL.");
-      }
-  }
-
-  private function generatePasskey(int $length = 32){
-    $newPassword = preg_replace("/[^a-zA-Z0-9]/", "", base64_encode($this->getRandomBytes($length+1)));
-    return strlen($newPassword) >= $length
-      ? substr($newPassword, 0, $length)
-      : $newPassword . $this->generatePasskey($length - strlen($newPassword));
-  }
-
-  private function getNewAPIKey(User $user, string $name = "default"){
-    $userBean = $user->unbox();
-    $raw = $this->generatePasskey();
-
-    $hashed = password_hash($raw, PASSWORD_BCRYPT);
-    $apiKey = R::dispense('apikey');
-    $apiKey->hash = $hashed;
-    $apiKey->name = $name;
-    $userBean->xownApikeyList[] = $apiKey;
-    R::store($userBean);
-
-    return $apiKey->getDetails() + [ 'secret' => $raw ];
   }
 }
