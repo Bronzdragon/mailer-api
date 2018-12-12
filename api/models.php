@@ -29,11 +29,6 @@ class user extends \RedBeanPHP\SimpleModel {
     return $returnValue;
   }
 
-  public function getKey(int $keyId): ?apikey {
-    $key = reset($this->bean->withCondition(' id = ? ', [$keyId])->xownApikeyList);
-    return ($key !== false ? $key->box() : null);
-  }
-
   public function updateDetails(string $name = null, string $email = null): Response {
     $this->bean->name = $name;
     $this->bean->email = $email;
@@ -42,10 +37,15 @@ class user extends \RedBeanPHP\SimpleModel {
     return new Response(200);
   }
 
+  public function getAPIKey(int $keyId): ?apikey {
+    $key = reset($this->bean->withCondition(' id = ? ', [$keyId])->xownApikeyList);
+    return ($key !== false ? $key->box() : null);
+  }
+
   public function addAPIKey(string $name = 'default', int $id = 0): Response {
     $apiKey = reset($this->bean->withCondition(' name = ? ', [$name])->xownApikeyList);
     if ($apiKey !== false) {
-      return new Response(400, [ 'error' => 'API key with this name exists already.']);
+      return new Response(400, [ 'error' => 'API key with this name already exists.']);
     }
 
     if (!empty($id) && R::load('apikey', $id)->id !== 0) {
@@ -62,12 +62,42 @@ class user extends \RedBeanPHP\SimpleModel {
 
     R::store($this->bean);
 
-    $this->getDetails();
-
     return new Response(201, [
       'message' => 'API key created.',
       'key' => $apiKey->getDetails() + ['secret' => $rawKey]
     ]);
+  }
+
+  public function getMailinglist(int $listId): ?mailinglist {
+    $list = reset($this->bean->withCondition(' id = ? ', [$listId])->xownMailinglistList);
+    return ($list !== false ? $list->box() : null);
+  }
+
+  public function addMailinglist(string $name, array $subscribers = null, int $id = 0): Response{
+    $list = reset($this->bean->withCondition(' name = ? ', [$name])->xownMailinglistList);
+    if ($list !== false) {
+      return new Response(400, [ 'error' => 'Mailing list with this name already exists.']);
+    }
+
+    if (!empty($id) && R::load('mailinglist', $id)->id !== 0) {
+      return new Response(400, [ 'error' => 'Invalid ID.']);
+    }
+
+    $list = R::dispense('mailinglist');
+    $list->id = $id;
+    $list->name = $name;
+
+    if (!empty($subscribers)) {
+      foreach ($subscribers as $subscriber) {
+        if (!isset($subscriber['name']) || !isset($subscriber['email']) || !isset($subscriber['state'])) { continue; }
+        $fields = isset($subscriber['fields']) ? $subscriber['fields'] : null;
+        $list->addSubscriber($subscriber['name'], $subscriber['email'], $subscriber['state'], $fields);
+      }
+    }
+
+    R::store($this->bean);
+
+    return new Response(201);
   }
 
   public function deleteUser(bool $confirm = false): Response {
@@ -117,14 +147,13 @@ class apikey extends \RedBeanPHP\SimpleModel {
     ];
   }
 
-  public function updateDetails(string $name = null) : Response {
+  public function updateDetails(string $name = null): Response {
     $this->bean->name = $name;
     R::store($this->bean);
     return new Response(200);
   }
 
-  public function deleteKey()
-  {
+  public function deleteKey(): Response {
     R::trash($this->bean);
     return new Response(200);
   }
@@ -163,6 +192,87 @@ class mailinglist extends \RedBeanPHP\SimpleModel {
 
     return $returnValue;
   }
+
+  public function updateDetails(string $name, array $subscribers = null, bool $clearSubscribers = false): Response {
+    $this->bean->name = $name;
+
+    if (!empty($subscribers)) {
+      return $this->setSubscribers($subscribers, $clearSubscribers);
+    }
+
+    R::store($this->bean);
+    return new Response(200);
+  }
+
+  private function setSubscribers(array $subscribers, bool $clearSubscribers = false): void {
+    if ($clearSubscribers) {
+      $this->bean->noLoad()->xownSubscriberList = [];
+    }
+
+    // Try to find and update the subscriber.
+    foreach ($subscribers as $subscriberInfo) {
+      if (!isset($subscriberInfo['id']) || !isset($subscriberInfo['email'])) { continue; }
+
+      if (isset($subscriberInfo['id'])) {
+        if ($subscriber = reset($this->bean->withCondition(' id = ? ', [$subscriberInfo['id']]) === false)) { continue; }
+        $name = isset($subscriberInfo['name']) ? $subscriberInfo['name'] : $subscriber->name;
+        $email = isset($subscriberInfo['email']) ? $subscriberInfo['email'] : $subscriber->email;
+        $state = isset($subscriberInfo['state']) ? $subscriberInfo['state'] : $subscriber->state;
+        $fields = isset($subscriberInfo['fields']) ? $subscriberInfo['fields'] : $subscriber->xownFieldList;
+
+        $subscriber->updateDetails($name, $email, $state, true, $fields);
+      } elseif ($subscriber = reset($this->bean->withCondition(' email = ? ', [$subscriberInfo['email']]) !== false)) {
+        $email = $subscriber->email;
+        $name = isset($subscriberInfo['name']) ? $subscriberInfo['name'] : $subscriber->name;
+        $state = isset($subscriberInfo['state']) ? $subscriberInfo['state'] : $subscriber->state;
+        $fields = isset($subscriberInfo['fields']) ? $subscriberInfo['fields'] : $subscriber->xownFieldList;
+
+        $subscriber->updateDetails($name, $email, $state, true, $fields);
+      } else {
+        if (!isset($subscriberInfo['name']) || !isset($subscriberInfo['state'])) { continue;  }
+        $fields = isset($subscriberInfo['fields']) ? $subscriberInfo['fields'] : null;
+        $this->addSubscriber($subscriberInfo['name'], $subscriberInfo['email'], $subscriberInfo['state'], $fields);
+      }
+    }
+  }
+
+  public function getSubscriber(int $subscriberId = 0): ?subscriber {
+    $subscriber = reset($this->bean->withCondition(' id = ? ', [$subscriberId])->xownSubscriberList);
+    return ($subscriber !== false ? $subscriber->box() : null);
+  }
+
+  public function addSubscriber(string $name, string $email, string $state, array $fields = null): Response {
+    $subscriber = reset($this->bean->withCondition(' name = ? ', [$name])->xownMailinglistList);
+    if ($subscriber !== false) {
+      return new Response(400, [ 'error' => 'Mailing list with this name already exists.']);
+    }
+
+    if (!empty($id) && R::load('subscriber', $id)->id !== 0) {
+      return new Response(400, [ 'error' => 'Invalid ID.']);
+    }
+
+    $subscriber = R::dispense('subscriber');
+    $subscriber->id = $id;
+    $subscriber->name = $name;
+    $subscriber->email = $email;
+    $subscriber->state = $state;
+
+    if (!empty($fields)) {
+      foreach ($fields as $field) {
+        if (isset($field['name']) && isset($field['value'])) {
+          $subscriber->addField($field['name'], $field['value']);
+        }
+      }
+    }
+
+    R::store($this->bean);
+    return new Response(201);
+  }
+
+  public function deleteMailinglist(): Response {
+    R::trash($this->bean);
+    return new Response(200);
+  }
 }
 
 class subscriber extends \RedBeanPHP\SimpleModel {
@@ -182,6 +292,58 @@ class subscriber extends \RedBeanPHP\SimpleModel {
       }
     }
     return $returnValue;
+  }
+
+  public function updateDetails(string $name, string $email, string $state, array $fields = null, bool $clearFields = false): Response {
+    if (filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
+      return new Response(400, [ 'error' => 'Email not formatted correctly' ]);
+    }
+    $emailDomain = substr($email, strrpos($email, '@') + 1);
+    if (!checkdnsrr($emailDomain, "MX")) {
+      return new Response(400, [ 'error' => 'Email domain is not valid.' ]);
+    }
+    if (!in_array(strtolower($state), ['active', 'unsubscribed', 'junk', 'bounced', 'unconfirmed'])){
+      return new Response(400, [ 'error' => 'Not a valid state' ]);
+    }
+
+    $this->bean->name = $name;
+    $this->bean->email = $email;
+    $this->bean->state = $state;
+
+    if ($clearFields) {
+      $this->bean->noLoad()->xownFieldList = [];
+    }
+
+    if (!empty($fields)) {
+      foreach ($fields as $field) {
+        if (!isset($field['name']) || !isset($field['value'])) { continue; }
+
+        if($fieldBean = reset($this->bean->withCondition(' name = ? ', [ $field['name'] ])->xownFieldList === false)){
+          $fieldBean = R::dispense('field');
+          $this->bean->noLoad()->xownFieldList[] = $fieldBean;
+        }
+        $fieldBean->updateDetails($field['name'], $field['value']);
+      }
+    }
+    R::store($this->bean);
+    return new Response(200);
+  }
+
+  public function getField(int $fieldId): ?field {
+    $field = reset($this->bean->withCondition(' id = ? ', [$fieldId])->xownFieldList);
+    return ($field !== false ? $field->box() : null);
+  }
+
+  public function addField(string $name, strint $value): Response {
+    $field = reset($this->bean->withCondition(' name = ? ', [$name])->xownMailinglistList);
+    if ($field !== false) {
+      return new Response(400, [ 'error' => 'Mailing list with this name already exists.']);
+    }
+  }
+
+  public function deleteSubscriber() : Response{
+    R::trash($this->bean);
+    return new Response(200);
   }
 }
 
@@ -205,5 +367,33 @@ class field extends \RedBeanPHP\SimpleModel {
       'name' => $this->bean->name,
       'value' => $value
     ];
+  }
+
+  public function updateDetails(string $name, $value): Response {
+    switch ($value) {
+      case 'boolean':
+        $this->bean->value = $value ? 'true' : 'false';
+        $this->bean->type = 'boolean';
+        break;
+      case 'integer': // Falls through intentially
+      case 'double':
+        $this->bean->value = (string)$value;
+        $this->bean->type = 'number';
+        break;
+      case 'string':
+        $this->bean->value = $value;
+        $this->bean->type = 'text';
+        break;
+      default: // Invalid type, ignore it.
+        break;
+    }
+
+    $this->bean->name = $name;
+    return new Response(200);
+  }
+
+  public function deleteField(): Response {
+    R::trash($this->bean);
+    return new Response(200);
   }
 }

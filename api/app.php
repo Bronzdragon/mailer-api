@@ -84,7 +84,7 @@ class MailerAPI {
               return new Response(400, ['message' => 'Please provide a valid array.']);
             }
             foreach ($request['body'] as $newKey) {
-              if (isset($newKey['id']) && isset($newKey['name']) && $key = $user->getKey($newKey['id'])) {
+              if (isset($newKey['id']) && isset($newKey['name']) && $key = $user->getAPIkey($newKey['id'])) {
                 $key->updateDetails($newKey['name']);
                 $numUpdatedKeys++;
               }
@@ -99,19 +99,15 @@ class MailerAPI {
             }
             foreach ($request['body'] as $keyId) {
               if (is_numeric($keyId)) {
-                $user->getKey($keyId)->deleteKey();
+                $user->getAPIkey($keyId)->deleteKey();
                 $numDeletedKeys++;
               }
             }
             return new Response(200, ['message' => "$numDeletedKeys ".($numDeletedKeys === 1 ?'key has':'keys have').' been deleted.']);
-
-            break;
-          default:
-            return new Response(501);
             break;
         }
       } else { // if we're targeting a specific key.
-        if (is_null($key = $user->getKey($keyid))) {
+        if (is_null($key = $user->getAPIkey($keyid))) {
           return new Response(404, ['error' => 'No key with that ID found.']);
         }
         switch ($request['method']) {
@@ -128,34 +124,144 @@ class MailerAPI {
           case 'delete':
             return $key->deleteKey();
             break;
-          default:
-            return new Response(501);
-            break;
         }
       }
+      return new Response(501);
     }
 
     // Mailing list endpoint
     if (preg_match('#^/api/mailinglists(?:/(\d+))?/?$#i', $request['endpoint'], $matches) === 1) {
-      $listid = isset($matches[1]) ? $matches[1] : null;
-
+      $listId = isset($matches[1]) ? $matches[1] : null;
+      if (is_null($user = user::getAuthenticatedUser($request['headers']))) {
+        return new Response(401, ['error' => 'You are not authenticated']);
+      }
+      if (is_null($listId)) {
+        switch ($request['method']) {
+          case 'get':
+            return new Response(200, $user->getDetails(true, false));
+            break;
+          case 'post':
+            if (!isset($request['body']['name'])) {
+              return new Response(400, ['error' => 'Please provide a name.']);
+            }
+            return $user->addMailinglist($request['body']['name']);
+            break;
+        }
+      } else {
+        if (is_null($mailinglist = $user->getMailinglist($listId))) {
+          return new Response(404, ['error' => 'No mailing list with that ID found.']);
+        }
+        switch ($request['method']) {
+          case 'get':
+            return new Response(200, $mailinglist->getDetails(true));
+            break;
+          case 'put':
+            if (!isset($request['body']['name']) || !isset($request['body']['subscribers'])) {
+              return new Response(400, ['error' => 'Please provide a name and a list of subscribers.']);
+            }
+            return $mailinglist->updateDetails($request['body']['name'], $request['body']['subscribers'], true);
+            break;
+          case 'patch':
+            $name = isset($request['body']['name']) ? $request['body']['name'] : $mailinglist->name;
+            $list = isset($request['body']['subscribers']) ? $request['body']['subscribers'] : null;
+            return $mailinglist->updateDetails($name, $list, false);
+            break;
+          case 'delete':
+            return $mailinglist->deleteMailinglist();
+            break;
+        }
+      }
+      return new Response(501);
     }
 
     // Subscriber endpoint
     if (preg_match('#^/api/mailinglists/(\d+)/subscribers/(?:(\d+))?/?$#i', $request['endpoint'], $matches) === 1) {
-      $listid = $matches[1];
+      if (is_null($user = user::getAuthenticatedUser($request['headers']))) {
+        return new Response(401, ['error' => 'You are not authenticated']);
+      }
+
+      $listId = $matches[1];
+      if (is_null($mailinglist = $user->getMailinglist($listId))) {
+        return new Response(404, ['error' => 'No mailing list with that ID found.']);
+      }
       $subscriberid = isset($matches[2]) ? $matches[2] : null;
-
+      if (is_null($subscriberid)) {
+        switch ($request['method']) {
+          case 'get':
+            return new Response(200, $mailinglist->getDetails(true));
+            break;
+          case 'post':
+            if (!isset($request['body']['name']) || !isset($request['body']['email']) || !isset($request['body']['state'])) {
+              return new Response(400, ['error' => 'Please provide a name, an email address and an initial state.']);
+            }
+            $fieldList = isset($request['body']['fields']) ? isset($request['body']['fields']) : null;
+            return $mailinglist->addSubscriber($request['body']['name'], $request['body']['email'], $request['body']['state'], $fieldList);
+            break;
+        }
+      } else {
+        if (is_null($subscriber = $mailinglist->getMailinglist($subscriberid))) {
+          return new Response(404, ['error' => 'No subscriber with that ID found.']);
+        }
+        switch ($request['method']) {
+          case 'get':
+            return new Response(200, $subscriber->getDetails(true));
+            break;
+          case 'put':
+            if (!isset($request['body']['name']) || !isset($request['body']['email']) || !isset($request['body']['state'])) {
+              return new Response(400, ['error' => 'Please provide a name, an email address and an initial state.']);
+            }
+            $fieldList = isset($request['body']['fields']) ? isset($request['body']['fields']) : null;
+            return $subscriber->updateDetails($request['body']['name'], $request['body']['email'], $request['body']['state'], $fieldList, true);
+            break;
+          case 'patch':
+            $name = isset($request['body']['name']) ? $request['body']['name'] : $subscriber->name;
+            $email = isset($request['body']['email']) ? $request['body']['email'] : $subscriber->email;
+            $state = isset($request['body']['state']) ? $request['body']['state'] : $subscriber->state;
+            $fields = isset($request['body']['fields']) ? isset($request['body']['fields']) : null;
+            return $subscriber->updateDetails($name, $email, $state, $fields, false);
+            break;
+          case 'delete':
+            return $subscriber->deleteSubscriber();
+            break;
+        }
+      }
+      return new Response(501);
     }
 
-    if (preg_match('#^/api/mailinglists/(\d+)/subscribers/(\d+)/fields/?$#i', $request['endpoint'], $matches) === 1) {
-      $listid = $matches[1];
-      $subscriberid = $matches[2];
-
-    }
-
-    return new Response(404, ['error' => 'Not a valid endpoint.']);
+    // Field endpoint
+  //   if (preg_match('#^/api/mailinglists/(\d+)/subscribers/(\d+)/fields/?$#i', $request['endpoint'], $matches) === 1) {
+  //     $listId = $matches[1];
+  //     $subscriberid = $matches[2];
+  //
+  //     if (is_null($user = user::getAuthenticatedUser($request['headers']))) {
+  //       return new Response(401, ['error' => 'You are not authenticated']);
+  //     }
+  //     if (is_null($mailinglist = $user->getMailinglist($listId))) {
+  //       return new Response(404, ['error' => 'No mailing list with that ID found.']);
+  //     }
+  //     if (is_null($subscriber = $mailinglist->getMailinglist($subscriberid))) {
+  //       return new Response(404, ['error' => 'No subscriber with that ID found.']);
+  //     }
+  //
+  //     switch ($request['method']) {
+  //       case 'get':
+  //
+  //         break;
+  //       case 'put':
+  //         // code...
+  //         break;
+  //       case 'patch':
+  //         // code...
+  //         break;
+  //       case 'delete':
+  //         // code...
+  //         break;
+  //     }
+  //     return new Response(501);
+  //   }
+  //
     // endpoint invalid.
+    return new Response(404, ['error' => 'Not a valid endpoint.']);
   }
 
   public function LoadConfig($configLocation) : \stdClass {
