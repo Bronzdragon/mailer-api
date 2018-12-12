@@ -3,8 +3,10 @@
 const expect = require('chai').expect;
 const request = require('request-promise');
 
+const BASEURL = "http://mail-api:8000";
+
 const baseRequest = request.defaults({
-  "baseUrl": "http://mail-api:8000/API/",
+  "baseUrl": BASEURL + "/API/",
   "resolveWithFullResponse": true,
   "simple": false,
   "json": true
@@ -36,7 +38,7 @@ describe('API', function() {
     });
   });
 
-  describe.only('Account functionality', function() {
+  describe('Account functionality', function() {
     const accountRequest = baseRequest.defaults({
       uri:'/account/'
     });
@@ -44,26 +46,22 @@ describe('API', function() {
     describe('Account Creation', function() {
       it('Creates an account.', async function () {
         let account = randomAccount();
-        let postResult = (await accountRequest.post({ body: account }).then(result => {
-          expect(result).to.have.property('statusCode').that.is.equal(201);
+        let postResult = await accountRequest.post({ body: account });
+        expect(postResult).to.have.property('statusCode').that.is.equal(201);
 
-          expect(result.body).to.have.property('email').that.is.equal(account.email);
-          expect(result.body).to.have.property('key').that.is.a('string');
+        expect(postResult.body).to.have.property('email').that.is.equal(account.email);
+        expect(postResult.body.key).to.have.property('secret').that.is.a('string');
 
-          return result;
-        })).body;
+        createdAccounts.push(postResult.body);
 
-        createdAccounts.push(postResult);
-
-        await accountRequest.get({
+        let getResult = await accountRequest.get({
           headers: {
-            'Email': postResult.email,
-            'Apikey': postResult.key
+            'Email': postResult.body.email,
+            'Apikey': postResult.body.key.secret
           }
-        }).then(result => {
-          expect(result.body).to.have.property('name').that.is.equal(account.name);
-          expect(result.body).to.have.property('email').that.is.equal(account.email);
         });
+        expect(getResult.body).to.have.property('name').that.is.equal(account.name);
+        expect(getResult.body).to.have.property('email').that.is.equal(account.email);
       });
       it('Reject a request for an identical account.', async function () {
         let payload = randomAccount();
@@ -81,7 +79,7 @@ describe('API', function() {
         await accountRequest.get({
           headers: {
             'Email': firstResult.body.email,
-            'Apikey': firstResult.body.key
+            'Apikey': firstResult.body.key.secret
           }
         }).then(result => {
           expect(result.body).to.have.property('name').that.is.equal(payload.name);
@@ -125,7 +123,7 @@ describe('API', function() {
         return accountRequest.get({
           headers: {
             'Email': account.email,
-            'Apikey': account.key
+            'Apikey': account.key.secret
           }
         }).then(result => {
           expect(result).to.have.property('statusCode').that.is.equal(200);
@@ -150,7 +148,7 @@ describe('API', function() {
         authenticatedRequest = accountRequest.defaults({
           headers: {
             'Email': account.email,
-            'Apikey': account.key
+            'Apikey': account.key.secret
           }
         });
 
@@ -167,7 +165,7 @@ describe('API', function() {
 
         const getResult = await authenticatedRequest.get({headers: {
           'email' : newDetails.email,
-          'apikey': account.key
+          'apikey': account.key.secret
         }});
 
         expect(getResult).to.have.property('statusCode').that.is.equal(200);
@@ -201,7 +199,7 @@ describe('API', function() {
 
         const getResult = await authenticatedRequest.get({headers: {
           'email' : newDetails.email,
-          'apikey': account.key
+          'apikey': account.key.secret
         }});
 
         expect(getResult).to.have.property('statusCode').that.is.equal(200);
@@ -223,7 +221,7 @@ describe('API', function() {
         const deleteResult = await accountRequest.delete({
           headers: {
             'Email': account.email,
-            'Apikey': account.key
+            'Apikey': account.key.secret
           },
           body: null
         });
@@ -231,7 +229,7 @@ describe('API', function() {
 
         const getResult = await accountRequest.get({headers: {
           'email' : account.email,
-          'apikey': account.key
+          'apikey': account.key.secret
         }});
 
         expect(getResult).to.have.property('statusCode').that.is.equal(200);
@@ -244,7 +242,7 @@ describe('API', function() {
         const deleteResult = await accountRequest.delete({
           headers: {
             'Email': account.email,
-            'Apikey': account.key
+            'Apikey': account.key.secret
           },
           body: {confirmDelete: true}
         });
@@ -252,7 +250,7 @@ describe('API', function() {
 
         const getResult = await accountRequest.get({headers: {
           'email' : account.email,
-          'apikey': account.key
+          'apikey': account.key.secret
         }});
 
         expect(getResult).to.have.property('statusCode').that.is.equal(401);
@@ -269,10 +267,11 @@ describe('API', function() {
           createdAccounts.push(testAccount);
 
           keyRequest = baseRequest.defaults({
-            uri:'/account/keys/',
+            uri: '/',
+            baseUrl: BASEURL + '/api/account/keys/',
             headers: {
               'Email': testAccount.email,
-              'Apikey': testAccount.key
+              'Apikey': testAccount.key.secret
             }
           });
         });
@@ -283,33 +282,27 @@ describe('API', function() {
             let result = await keyRequest.post({headers:null})
             expect(result).to.have.property('statusCode').that.is.equal(401);
         });
-        it('Creates a new key', function() {
-          return keyRequest.post({})
-          .then(result => {
-            expect(result).to.have.property('statusCode').that.is.equal(201);
+        it('Creates a new key', async function() {
+          const result = await keyRequest.post();
+          expect(result).to.have.property('statusCode').that.is.equal(201);
 
-            expect(result.body).to.be.an('object');
-            expect(result.body).have.a.property('id').that.is.an('number');
-            expect(result.body).have.a.property('name').that.is.an('string');
-            expect(result.body).have.a.property('secret').that.is.an('string');
-          });
+          expect(result.body.key).to.be.an('object');
+          expect(result.body.key).have.a.property('id').that.is.a('number');
+          expect(result.body.key).have.a.property('name').that.is.a('string');
+          expect(result.body.key).have.a.property('secret').that.is.a('string');
         });
-        it('Allows specifying a key name', function() {
+        it('Allows specifying a key name', async function() {
           randomName = randomString();
-          return keyRequest.post({ body: {name: randomName} })
-          .then(result => {
-            expect(result).to.have.property('statusCode').that.is.equal(201);
-            expect(result.body).to.be.an('object');
-            expect(result.body).have.a.property('id').that.is.an('number');
-            expect(result.body).have.a.property('name').that.is.an('string');
-            expect(result.body).have.a.property('secret').that.is.an('string');
+          const result = await keyRequest.post({ body: {name: randomName} });
+          expect(result).to.have.property('statusCode').that.is.equal(201);
+          expect(result.body.key).to.be.an('object');
+          expect(result.body.key).have.a.property('id').that.is.a('number');
+          expect(result.body.key).have.a.property('secret').that.is.a('string');
+          expect(result.body.key).have.a.property('name').to.be.equal(randomName);
 
-            keyRequest.get({})
-            .then(result => {
-              let containskey = result.body.keys.some(key => key.name === randomName);
-              expect(containskey).to.be.true;
-            });
-          });
+          const allKeys = (await keyRequest.get()).body.keys;
+          const containskey = allKeys.some(key => key.name === randomName);
+          expect(containskey).to.be.true;
         });
       });
       describe('Key Viewing', function() {
@@ -321,7 +314,7 @@ describe('API', function() {
           const randomKey = allKeys[Math.floor(Math.random() * allKeys.length)];
           const singleResult = await keyRequest.get({
             headers: null,
-            uri: `account/keys/${randomKey.id}`
+            uri: `/${randomKey.id}/`
           });
           expect(singleResult).to.have.property('statusCode').that.is.equal(401);
 
@@ -330,7 +323,7 @@ describe('API', function() {
           const allKeys = (await keyRequest.get()).body.keys;
           const randomKey = allKeys[Math.floor(Math.random() * allKeys.length)];
 
-          const keyResult = await keyRequest.get({uri: `account/keys/${randomKey.id}`});
+          const keyResult = await keyRequest.get(`/${randomKey.id}/`);
           expect(keyResult.body).to.deep.equal(randomKey);
         });
         it('Allows viewing of all keys', async function() {
@@ -349,73 +342,104 @@ describe('API', function() {
           let newName = randomString();
           // Generate a new key to test.
           let testkey = await keyRequest.post({ body: { name: oldName } })
-            .then(result => result.body);
+            .then(result => result.body.key);
 
           let updateRequest = await keyRequest.put({
-            uri:`/account/keys/${testkey.id}`,
+            uri: `/${testkey.id}/`,
             headers: null,
             body: {name: newName}
           });
           expect(updateRequest).to.have.property('statusCode').that.is.equal(401);
 
-          let result = await keyRequest.get({uri:`/account/keys/${testkey.id}`})
-          expect(result.body.key).to.have.property('name').that.is.equal(oldName);
+          let result = await keyRequest.get(`/${testkey.id}/`)
+          expect(result.body).to.have.property('name').that.is.equal(oldName);
         });
         it('Edits the name of a single key by ID', async function () {
-          expect.fail("Not yet implemented");
+          const oldName = randomString();
+          const newName = randomString();
 
-          // Generate a new key to test.
-          let oldName = randomString();
-          let newName = randomString();
-          let testkey = await keyRequest.post({ body: { name: oldName } }).body;
-          let editRequest = await keyRequest.put({
-            uri:`/account/keys/${testkey.id}/`,
+          const testkey = await keyRequest.post({ body: { name: oldName } }).then(result => result.body.key);
+
+          const editRequest = await keyRequest.put({
+            uri: `/${testkey.id}/`,
             body: { name: newName }
           });
-          expect(editRequest).to.have.property('statusCode').that.is.equal(200, editRequest.body.error);
-          return keyRequest.get({
-            uri:`/account/keys/${testkey.id}`,
-          }).then(result => {
-            let newkey = result.body.key;
-            expect(newkey.name).to.be.equal(newName);
-          });
+          expect(editRequest).to.have.property('statusCode').that.is.equal(200);
+
+          const newKey = await keyRequest.get({
+            uri:`/${testkey.id}/`,
+          }).then(result => result.body);
+          expect(newKey.name).to.be.equal(newName);
         });
-        it('Edits the names of keys in bulk by IDs', function() {
-          expect.fail("Not yet implemented");
+        it('Edits the names of keys in bulk by IDs', async function() {
+          const CreateKey = (name => {
+            return keyRequest.post({ body: { name: name } }).then(result => {
+              returnVal = result.body.key;
+              returnVal.newName = randomString();
+              return returnVal;
+            })
+          });
+
+          const testKeys = await Promise.all([
+            CreateKey(randomString()),
+            CreateKey(randomString()),
+            CreateKey(randomString())
+          ]);
+
+          let editRequest = await keyRequest.patch({ body: [
+            { id: testKeys[0].id, name: testKeys[0].newName },
+            { id: testKeys[1].id, name: testKeys[1].newName },
+            { id: testKeys[2].id, name: testKeys[2].newName }
+          ]});
+
+          expect(editRequest).to.have.property('statusCode').that.is.equal(200);
+
+          const allKeys = (await keyRequest.get()).body.keys;
+
+          for (let testKey of testKeys) {
+            let keyExists = allKeys.some(key => key.id === testKey.id && key.name === testKey.newName);
+            expect(keyExists).to.be.true;
+          }
+
+          // expect.fail("Not yet implemented");
         });
       });
       describe('Key Deletion', function() {
         it('Reject requests that are not authenticated.', async function() {
-          let testKey = await keyRequest.post({});
-          return keyRequest.delete({uri: `account/keys/${testKey.id}`, headers:null})
-          .then(result => {
-            expect(result).to.have.property('statusCode').that.is.equal(401);
+          const keyName = randomString();
+          let testKey = (await keyRequest.post({body:{name: keyName}})).body.key;
+
+          const deleteRequest = await keyRequest.delete({
+            uri: `/${testKey.id}/`,
+            headers:null
           });
+          expect(deleteRequest).to.have.property('statusCode').that.is.equal(401);
         });
         it('Deletes single keys by ID', async function() {
-          let testKey = (await keyRequest.post({})).body;
-          let deleteRequest = await keyRequest.delete({
-            uri: `account/keys/${testKey.id}/`
+          const keyName = randomString();
+          let testKey = (await keyRequest.post({body:{name: keyName}})).body.key;
+
+          const deleteRequest = await keyRequest.delete({
+            uri: `/${testKey.id}/`
           });
 
           expect(deleteRequest).have.property('statusCode').that.is.equal(200);
 
-          let getRequest = await keyRequest.get({uri: `account/keys/${testKey.id}`});
+          let getRequest = await keyRequest.get({uri: `/${testKey.id}/`});
           expect(getRequest).have.property('statusCode').that.is.equal(404);
         });
         it('Deletes a list of keys by IDs', async function() {
-          expect.fail("Not yet implemented");
-          // Not yet implemented.
           let testKeys = (await Promise.all([
-            keyRequest.post({}),
-            keyRequest.post({}),
-            keyRequest.post({})
-          ])).map(res => res.body);
+            keyRequest.post({body:{name: randomString()}}),
+            keyRequest.post({body:{name: randomString()}}),
+            keyRequest.post({body:{name: randomString()}})
+          ])).map(res => res.body.key);
 
           let deleteRequest = await keyRequest.delete({
-            uri: 'account/keys/',
-            body: ''
+            body: [testKeys[0].id, testKeys[1].id, testKeys[2].id]
           });
+          expect(deleteRequest).have.property('statusCode').that.is.equal(200);
+
         });
       });
     });

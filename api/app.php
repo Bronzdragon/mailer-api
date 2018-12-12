@@ -28,41 +28,33 @@ class MailerAPI {
 
     // Account endpoint
     if (preg_match('#^/api/account/?$#i', $request['endpoint']) === 1) {
+      if ($request['method'] === 'post') {
+        if (!isset($request['body']['name']) || !isset($request['body']['email'])) {
+          return new Response(400, ['error' => 'Both name and email are required properties.']);
+        }
+        return user::createUser($request['body']['name'], $request['body']['email']);
+      }
+
+      if (is_null($user = user::getAuthenticatedUser($request['headers']))) {
+        return new Response(401, ['error' => 'You are not authenticated']);
+      }
+
       switch ($request['method']) {
         case 'get':
-          if (is_null($user = user::getAuthenticatedUser($request['headers']))) {
-            return new Response(401, ['error' => 'You are not authenticated']);
-          }
           return new Response(200, $user->getDetails());
           break;
-        case 'post':
-          if (!isset($request['body']['name']) || !isset($request['body']['email'])) {
-            return new Response(400, ['error' => 'Both name and email are required properties.']);
-          }
-          return user::createUser($request['body']['name'], $request['body']['email']);
-          break;
         case 'put':
-          if (is_null($user = user::getAuthenticatedUser($request['headers']))) {
-            return new Response(401, ['error' => 'You are not authenticated']);
-          }
-
           if (!isset($request['body']['name']) || !isset($request['body']['email'])) {
             return new Response(400, ['error' => 'Both name and email are required properties.']);
           }
           return $user->updateDetails($request['body']['name'], $request['body']['email']);
           break;
         case 'patch':
-          if (is_null($user = user::getAuthenticatedUser($request['headers']))) {
-            return new Response(401, ['error' => 'You are not authenticated']);
-          }
           $name = !empty($request['body']['name']) ? $request['body']['name'] : $user->name;
           $email = !empty($request['body']['email']) ? $request['body']['email'] : $user->email;
           return $user->updateDetails($name, $email);
           break;
         case 'delete':
-          if (is_null($user = user::getAuthenticatedUser($request['headers']))) {
-            return new Response(401, ['error' => 'You are not authenticated']);
-          }
           $deleteFlag = isset($request['body']['confirmDelete']) && $request['body']['confirmDelete'];
           return $user->deleteUser($deleteFlag);
           break;
@@ -73,41 +65,68 @@ class MailerAPI {
     // keys endpoint
     if (preg_match("#^/api/account/keys(?:/(\d+))?/?$#i", $request['endpoint'], $matches) === 1) {
       $keyid = isset($matches[1]) ? $matches[1] : null;
-      if(is_null($keyid)){
+      if (is_null($user = user::getAuthenticatedUser($request['headers']))) {
+        return new Response(401, ['error' => 'You are not authenticated']);
+      }
+
+      if(is_null($keyid)) {
         switch ($request['method']) {
           case 'get':
-            if (is_null($user = user::getAuthenticatedUser($request['headers']))) {
-              return new Response(401, ['error' => 'You are not authenticated']);
-            }
             return new Response(200, $user->getDetails(false, true));
-
             break;
           case 'post':
-            // code...
+            $name = isset($request['body']['name']) ? $request['body']['name'] : 'default';
+            return $user->addAPIKey($name);
+            break;
+          case 'patch':
+            $numUpdatedKeys = 0;
+            if (!is_array($request['body'])) {
+              return new Response(400, ['message' => 'Please provide a valid array.']);
+            }
+            foreach ($request['body'] as $newKey) {
+              if (isset($newKey['id']) && isset($newKey['name']) && $key = $user->getKey($newKey['id'])) {
+                $key->updateDetails($newKey['name']);
+                $numUpdatedKeys++;
+              }
+            }
+            // $message =
+            return new Response(200, ['message' => "$numUpdatedKeys ".($numUpdatedKeys === 1 ?'key has':'keys have').' been updated.']);
+            break;
+          case 'delete':
+            $numDeletedKeys = 0;
+            if (!is_array($request['body'])) {
+              return new Response(400, ['message' => 'Please provide a valid array.']);
+            }
+            foreach ($request['body'] as $keyId) {
+              if (is_numeric($keyId)) {
+                $user->getKey($keyId)->deleteKey();
+                $numDeletedKeys++;
+              }
+            }
+            return new Response(200, ['message' => "$numDeletedKeys ".($numDeletedKeys === 1 ?'key has':'keys have').' been deleted.']);
+
             break;
           default:
             return new Response(501);
             break;
         }
       } else { // if we're targeting a specific key.
+        if (is_null($key = $user->getKey($keyid))) {
+          return new Response(404, ['error' => 'No key with that ID found.']);
+        }
         switch ($request['method']) {
           case 'get':
-            if (is_null($user = user::getAuthenticatedUser($request['headers']))) {
-              return new Response(401, ['error' => 'You are not authenticated']);
-            }
-            if (is_null($key = $user->getKey($keyid))) {
-              return new Response(404, ['error' => 'No key with that ID found.']);
-            }
             return new Response(200, $key->getDetails());
             break;
-          case 'put':
-            // code...
-            break;
+          case 'put': // Falls through intentionally.
           case 'patch':
-            // code...
+            if (!isset($request['body']['name'])) {
+              return new Response(400, ['error' => 'A name is required.']);
+            }
+            return $key->updateDetails($request['body']['name']);
             break;
           case 'delete':
-            // code...
+            return $key->deleteKey();
             break;
           default:
             return new Response(501);
@@ -135,7 +154,7 @@ class MailerAPI {
 
     }
 
-    return new Response(404, ['error' => 'Not a validpoint.']);
+    return new Response(404, ['error' => 'Not a valid endpoint.']);
     // endpoint invalid.
   }
 

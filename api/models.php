@@ -42,10 +42,20 @@ class user extends \RedBeanPHP\SimpleModel {
     return new Response(200);
   }
 
-  public function addAPIKey(string $name = 'default'): Response {
+  public function addAPIKey(string $name = 'default', int $id = 0): Response {
+    $apiKey = reset($this->bean->withCondition(' name = ? ', [$name])->xownApikeyList);
+    if ($apiKey !== false) {
+      return new Response(400, [ 'error' => 'API key with this name exists already.']);
+    }
+
+    if (!empty($id) && R::load('apikey', $id)->id !== 0) {
+      return new Response(400, [ 'error' => 'Invalid ID.']);
+    }
+
     $rawKey = apikey::generatePasskey();
 
     $apiKey = R::dispense('apikey');
+    $apiKey->id = $id;
     $apiKey->hash = password_hash($rawKey, PASSWORD_BCRYPT);
     $apiKey->name = $name;
     $this->bean->noLoad()->xownApikeyList[] = $apiKey;
@@ -54,9 +64,9 @@ class user extends \RedBeanPHP\SimpleModel {
 
     $this->getDetails();
 
-    return new Response(201, $this->getDetails() + [
+    return new Response(201, [
       'message' => 'API key created.',
-      'key' => $rawKey
+      'key' => $apiKey->getDetails() + ['secret' => $rawKey]
     ]);
   }
 
@@ -76,9 +86,8 @@ class user extends \RedBeanPHP\SimpleModel {
     $user = R::dispense('user');
     $user->updateDetails($name, $email);
 
-    // Bean will be stored when we add an APIkey.
     $response = $user->addAPIKey('master');
-    $response->body = ['message' => 'User created.'] + $response->body;
+    $response->body = $user->getDetails() + ['message' => 'User created.'] + $response->body;
     return $response;
   }
 
@@ -106,6 +115,18 @@ class apikey extends \RedBeanPHP\SimpleModel {
       'id' => (int)$this->bean->id,
       'name' => $this->bean->name
     ];
+  }
+
+  public function updateDetails(string $name = null) : Response {
+    $this->bean->name = $name;
+    R::store($this->bean);
+    return new Response(200);
+  }
+
+  public function deleteKey()
+  {
+    R::trash($this->bean);
+    return new Response(200);
   }
 
   private static function getRandomBytes(int $nbBytes = 32): string {
