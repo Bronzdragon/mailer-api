@@ -30,26 +30,44 @@ class MailerAPI {
     if (preg_match('#^/api/account/?$#i', $request['endpoint']) === 1) {
       switch ($request['method']) {
         case 'get':
-          $body = user::getAuthenticatedUser($request['headers'])->getDetails();
-          return new Response(200, $body);
+          if (is_null($user = user::getAuthenticatedUser($request['headers']))) {
+            return new Response(401, ['error' => 'You are not authenticated']);
+          }
+          return new Response(200, $user->getDetails());
           break;
         case 'post':
-          // var_dump($request['body']);
-          return user::createUser($request['body']);
+          if (!isset($request['body']['name']) || !isset($request['body']['email'])) {
+            return new Response(400, ['error' => 'Both name and email are required properties.']);
+          }
+          return user::createUser($request['body']['name'], $request['body']['email']);
           break;
         case 'put':
-          // code...
+          if (is_null($user = user::getAuthenticatedUser($request['headers']))) {
+            return new Response(401, ['error' => 'You are not authenticated']);
+          }
+
+          if (!isset($request['body']['name']) || !isset($request['body']['email'])) {
+            return new Response(400, ['error' => 'Both name and email are required properties.']);
+          }
+          return $user->updateDetails($request['body']['name'], $request['body']['email']);
           break;
         case 'patch':
-          // code...
+          if (is_null($user = user::getAuthenticatedUser($request['headers']))) {
+            return new Response(401, ['error' => 'You are not authenticated']);
+          }
+          $name = !empty($request['body']['name']) ? $request['body']['name'] : $user->name;
+          $email = !empty($request['body']['email']) ? $request['body']['email'] : $user->email;
+          return $user->updateDetails($name, $email);
           break;
         case 'delete':
-          // code...
-          break;
-        default:
-          return new Response(501);
+          if (is_null($user = user::getAuthenticatedUser($request['headers']))) {
+            return new Response(401, ['error' => 'You are not authenticated']);
+          }
+          $deleteFlag = isset($request['body']['confirmDelete']) && $request['body']['confirmDelete'];
+          return $user->deleteUser($deleteFlag);
           break;
       }
+      return new Response(501);
     }
 
     // keys endpoint
@@ -58,7 +76,11 @@ class MailerAPI {
       if(is_null($keyid)){
         switch ($request['method']) {
           case 'get':
-            // code...
+            if (is_null($user = user::getAuthenticatedUser($request['headers']))) {
+              return new Response(401, ['error' => 'You are not authenticated']);
+            }
+            return new Response(200, $user->getDetails(false, true));
+
             break;
           case 'post':
             // code...
@@ -70,7 +92,13 @@ class MailerAPI {
       } else { // if we're targeting a specific key.
         switch ($request['method']) {
           case 'get':
-            // code...
+            if (is_null($user = user::getAuthenticatedUser($request['headers']))) {
+              return new Response(401, ['error' => 'You are not authenticated']);
+            }
+            if (is_null($key = $user->getKey($keyid))) {
+              return new Response(404, ['error' => 'No key with that ID found.']);
+            }
+            return new Response(200, $key->getDetails());
             break;
           case 'put':
             // code...
@@ -107,10 +135,11 @@ class MailerAPI {
 
     }
 
+    return new Response(404, ['error' => 'Not a validpoint.']);
     // endpoint invalid.
   }
 
-  public function LoadConfig($configLocation) : stdClass {
+  public function LoadConfig($configLocation) : \stdClass {
     if (empty($configLocation))
     {
       throw new Exception('No config location provided.');

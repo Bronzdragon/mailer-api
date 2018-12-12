@@ -19,7 +19,7 @@ describe('API', function() {
         uri: '/account/',
         headers: {
           'Email': account.email,
-          'Api-Key': account.key.secret
+          'Apikey': account.key
         },
         body: { confirmDelete: true }
       }));
@@ -36,26 +36,33 @@ describe('API', function() {
     });
   });
 
-  describe('Account functionality', function() {
+  describe.only('Account functionality', function() {
     const accountRequest = baseRequest.defaults({
       uri:'/account/'
     });
 
     describe('Account Creation', function() {
-      it('Creates an account.', function () {
-        return accountRequest.post({ body: randomAccount() })
-        .then(result => {
-          let details = result.body.details;
+      it('Creates an account.', async function () {
+        let account = randomAccount();
+        let postResult = (await accountRequest.post({ body: account }).then(result => {
           expect(result).to.have.property('statusCode').that.is.equal(201);
 
-          expect(details).to.have.property('id').that.is.a('number');
-          expect(details).to.have.property('name').that.is.a('string');
-          expect(details).to.have.property('key').that.is.an('object');
+          expect(result.body).to.have.property('email').that.is.equal(account.email);
+          expect(result.body).to.have.property('key').that.is.a('string');
 
-          expect(details.key).to.have.property('id').that.is.an('number');
-          expect(details.key).to.have.property('secret').that.is.a('string');
+          return result;
+        })).body;
 
-          createdAccounts.push(result.body.details);
+        createdAccounts.push(postResult);
+
+        await accountRequest.get({
+          headers: {
+            'Email': postResult.email,
+            'Apikey': postResult.key
+          }
+        }).then(result => {
+          expect(result.body).to.have.property('name').that.is.equal(account.name);
+          expect(result.body).to.have.property('email').that.is.equal(account.email);
         });
       });
       it('Reject a request for an identical account.', async function () {
@@ -65,10 +72,21 @@ describe('API', function() {
         secondResult = await accountRequest.post({ body: payload });
 
         expect(firstResult).to.have.property('statusCode').that.is.equal(201);
-        expect(secondResult).to.have.property('statusCode').that.is.equal(409);
+        expect(secondResult).to.have.property('statusCode').that.is.equal(400);
+        expect(secondResult.body).to.not.property('Apikey');
 
         // for cleanup later.
-        createdAccounts.push(firstResult.body.details);
+        createdAccounts.push(firstResult.body);
+
+        await accountRequest.get({
+          headers: {
+            'Email': firstResult.body.email,
+            'Apikey': firstResult.body.key
+          }
+        }).then(result => {
+          expect(result.body).to.have.property('name').that.is.equal(payload.name);
+          expect(result.body).to.have.property('email').that.is.equal(payload.email);
+        });
       });
       it('Rejects requests if some or all properties are missing.', function(){
         return Promise.all([
@@ -89,15 +107,15 @@ describe('API', function() {
         ]);
       });
     });
+
     describe('Account Viewing', function() {
       let account; // Account used in this section.
       before(function() {
         return accountRequest.post({ body: randomAccount() }).then(result => {
-          account = result.body.details;
+          account = result.body;
           createdAccounts.push(account);
         });
       });
-
       it('Rejects requests that are not authenticated.', function(){
         return accountRequest.get().then(result => {
           expect(result).to.have.property('statusCode').that.is.equal(401);
@@ -107,7 +125,7 @@ describe('API', function() {
         return accountRequest.get({
           headers: {
             'Email': account.email,
-            'Api-Key': account.key.secret
+            'Apikey': account.key
           }
         }).then(result => {
           expect(result).to.have.property('statusCode').that.is.equal(200);
@@ -117,92 +135,127 @@ describe('API', function() {
         });
       });
     });
+
     describe('Account Editing', function() {
-      // Currently, no account editing (of name or email) is implemented.
       let account, authenticatedRequest;
-      before(function(){ // Fill vars we'll need for these tests
-        return accountRequest.post({ body: {
-          name: randomString(8),
-          email: `${randomString(8)}@gmail.com`
-        }})
-        .then(result => {
-          account = result.body.details;
-          authenticatedRequest = accountRequest.defaults({
-            headers: {
-              'Email': account.email,
-              'Api-Key': account.apikey
-            }
-          });
-          createdAccounts.push(account);
+      beforeEach(async function(){ // Fill vars we'll need for these tests
+        const name = randomString();
+
+        const result = await accountRequest.post({ body: {
+          name: name,
+          email: `${name}@gmail.com`
+        }});
+
+        account = result.body;
+        authenticatedRequest = accountRequest.defaults({
+          headers: {
+            'Email': account.email,
+            'Apikey': account.key
+          }
         });
+
+        createdAccounts.push(account);
       });
-      it('Rejects requests that are not authenticated.', function () {
-        return accountRequest.post(`account/${account.email}`).then(result => {
-          expect(result).to.have.property('statusCode').that.is.equal(401);
-        });
+      it('Rejects requests that are not authenticated.', async function () {
+        const result = await accountRequest.put();
+        expect(result).to.have.property('statusCode').that.is.equal(401);
       });
-      it('Allows updating of account name and email.', function() {
-        expect.fail("Not yet implemented.");
+      it('Allows updating of account name and email via PUT.', async function() {
+        const newDetails = randomAccount();
+        const changeResult = await authenticatedRequest.put({body: newDetails});
+        expect(changeResult).to.have.property('statusCode').that.is.equal(200);
+
+        const getResult = await authenticatedRequest.get({headers: {
+          'email' : newDetails.email,
+          'apikey': account.key
+        }});
+
+        expect(getResult).to.have.property('statusCode').that.is.equal(200);
+
+        expect(getResult.body).to.have.property('name').that.is.equal(newDetails.name);
+        expect(getResult.body).to.have.property('email').that.is.equal(newDetails.email);
       });
-      it('Rejects requests that are missing parameters.', function() {
-        expect.fail("Not yet implemented.");
+      it('Rejects PUT requests that are missing parameters.', async function() {
+        const newDetails = randomAccount();
+        const nameResult = await authenticatedRequest.put({body: {name: newDetails.name}});
+        expect(nameResult).to.have.property('statusCode').that.is.equal(400);
+
+        const emailResult = await authenticatedRequest.put({body: {email: newDetails.email}});
+        expect(emailResult).to.have.property('statusCode').that.is.equal(400);
+
+        const getResult = await authenticatedRequest.get();
+
+        expect(getResult).to.have.property('statusCode').that.is.equal(200);
+
+        expect(getResult.body).to.have.property('name').that.is.equal(account.name);
+        expect(getResult.body).to.have.property('email').that.is.equal(account.email);
+      });
+      it('Allows updating of account name or email (or both) via PATCH.', async function() {
+        const newDetails = randomAccount();
+
+        const nameResult = await authenticatedRequest.patch({body: {name: newDetails.name}});
+        expect(nameResult).to.have.property('statusCode').that.is.equal(200);
+
+        const emailResult = await authenticatedRequest.patch({body: {email: newDetails.email}});
+        expect(emailResult).to.have.property('statusCode').that.is.equal(200);
+
+        const getResult = await authenticatedRequest.get({headers: {
+          'email' : newDetails.email,
+          'apikey': account.key
+        }});
+
+        expect(getResult).to.have.property('statusCode').that.is.equal(200);
+
+        expect(getResult.body).to.have.property('name').that.is.equal(newDetails.name);
+        expect(getResult.body).to.have.property('email').that.is.equal(newDetails.email);
       });
     });
+
     describe('Account Deletion', function() {
-      it('Rejects requests that are not authenticated.', function (){
-        return accountRequest.post({ body: randomAccount() })
-        .then(result => {
-          createdAccounts.push(result.body.details);
-          return accountRequest.delete({body: { confirmDelete: true }});
-        }).then(result => {
-          expect(result).to.have.property('statusCode').that.is.equal(401);
-        });
+      it('Rejects requests that are not authenticated.', async function (){
+        const result = await accountRequest.delete({body: { confirmDelete: true }});
+        expect(result).to.have.property('statusCode').that.is.equal(401);
       });
-      it("Rejects requests without the 'confirmDelete' flag set.", function(){
-        return accountRequest.post({ body: randomAccount() })
-        .then(result => {
-          account = result.body.details;
-          createdAccounts.push(account);
+      it("Rejects requests without the 'confirmDelete' flag set.", async function(){
+        const account = (await accountRequest.post({ body: randomAccount() })).body;
+        createdAccounts.push(account);
 
-          return accountRequest.delete({
-            headers: {
-              'Email': account.email,
-              'Api-Key': account.key.secret
-            },
-            body: {}
-          });
-        }).then(result => {
-          expect(result).to.have.property('statusCode').that.is.equal(400);
-        });
-      });
-      it('Deletes accounts.', function(){
-        let account;
-        // Setup
-        return accountRequest.post({
-          body: randomAccount()
-        }).then(result => {
-          account = result.body.details;
-          // Actual deletion.
-          return accountRequest.delete({
-            headers: {
-              'Email': account.email,
-              'Api-Key': account.key.secret
-            },
-            body: { confirmDelete: true }
-          });
-        }).then(result => {
-          // Expect the server to send the OK on delete
-          expect(result).to.have.property('statusCode').that.is.equal(200);
-
-          // Expect the get request to fail, since the account no longer exists.
-          accountRequest.get({headers: {
+        const deleteResult = await accountRequest.delete({
+          headers: {
             'Email': account.email,
-            'Api-Key': account.apikey
-          }}).then(result => {
-            expect(result).to.have.property('statusCode').that.is.equal(401);
-          });
-
+            'Apikey': account.key
+          },
+          body: null
         });
+        expect(deleteResult).to.have.property('statusCode').that.is.equal(400);
+
+        const getResult = await accountRequest.get({headers: {
+          'email' : account.email,
+          'apikey': account.key
+        }});
+
+        expect(getResult).to.have.property('statusCode').that.is.equal(200);
+        expect(getResult.body).to.have.property('name').that.is.equal(account.name);
+        expect(getResult.body).to.have.property('email').that.is.equal(account.email);
+      });
+      it('Deletes accounts.', async function(){
+        const account = (await accountRequest.post({ body: randomAccount() })).body;
+
+        const deleteResult = await accountRequest.delete({
+          headers: {
+            'Email': account.email,
+            'Apikey': account.key
+          },
+          body: {confirmDelete: true}
+        });
+        expect(deleteResult).to.have.property('statusCode').that.is.equal(200);
+
+        const getResult = await accountRequest.get({headers: {
+          'email' : account.email,
+          'apikey': account.key
+        }});
+
+        expect(getResult).to.have.property('statusCode').that.is.equal(401);
       });
     });
 
@@ -212,25 +265,23 @@ describe('API', function() {
       before(function() {
         return accountRequest.post({ body: randomAccount() })
         .then(result => {
-          testAccount = result.body.details;
+          testAccount = result.body;
           createdAccounts.push(testAccount);
 
           keyRequest = baseRequest.defaults({
             uri:'/account/keys/',
             headers: {
               'Email': testAccount.email,
-              'Api-Key': testAccount.key.secret
+              'Apikey': testAccount.key
             }
           });
         });
       });
 
       describe('Key Creation', function() {
-        it('Reject requests that are not authenticated.', function(){
-            return keyRequest.post({headers:{'api-key': null}})
-            .then(result => {
-              expect(result).to.have.property('statusCode').that.is.equal(401);
-            });
+        it('Reject requests that are not authenticated.', async function(){
+            let result = await keyRequest.post({headers:null})
+            expect(result).to.have.property('statusCode').that.is.equal(401);
         });
         it('Creates a new key', function() {
           return keyRequest.post({})
@@ -262,33 +313,34 @@ describe('API', function() {
         });
       });
       describe('Key Viewing', function() {
-        it('Reject requests that are not authenticated.', function() {
-          return keyRequest.get({headers:{'api-key': null}})
-          .then(result => {
-            expect(result).to.have.property('statusCode').that.is.equal(401);
-          });
-        });
-        it('Allows viewing of single keys', function() {
-          return keyRequest.get({})
-          .then(result => {
-            let randomKey = result.body.keys[Math.floor(Math.random() * result.body.keys.length)];
+        it('Reject requests that are not authenticated.', async function() {
+          const multiResult = await keyRequest.get({headers: null});
+          expect(multiResult).to.have.property('statusCode').that.is.equal(401);
 
-            keyRequest.get({uri: `account/keys/${randomKey.id}`})
-            .then(result => {
-              expect(result.body.key).to.deep.equal(randomKey);
-            });
+          const allKeys = (await keyRequest.get()).body.keys;
+          const randomKey = allKeys[Math.floor(Math.random() * allKeys.length)];
+          const singleResult = await keyRequest.get({
+            headers: null,
+            uri: `account/keys/${randomKey.id}`
           });
-        });
-        it('Allows viewing of all keys', function() {
-          return keyRequest.get({})
-          .then(result => {
-            expect(result).to.have.property('statusCode').that.is.equal(200);
-            expect(result.body).to.have.a.property('keys').that.is.an('array');
-            expect(result.body.keys).to.have.lengthOf.at.least(1);
+          expect(singleResult).to.have.property('statusCode').that.is.equal(401);
 
-            let validKey = key => key.hasOwnProperty('id') && key.hasOwnProperty('name');
-            expect(result.body.keys.every(validKey)).to.be.true;
-          });
+        });
+        it('Allows viewing of single keys', async function() {
+          const allKeys = (await keyRequest.get()).body.keys;
+          const randomKey = allKeys[Math.floor(Math.random() * allKeys.length)];
+
+          const keyResult = await keyRequest.get({uri: `account/keys/${randomKey.id}`});
+          expect(keyResult.body).to.deep.equal(randomKey);
+        });
+        it('Allows viewing of all keys', async function() {
+          const keyResult = await keyRequest.get();
+          expect(keyResult).to.have.property('statusCode').that.is.equal(200);
+          expect(keyResult.body).to.have.a.property('keys').that.is.an('array');
+          expect(keyResult.body.keys).to.have.lengthOf.at.least(1);
+
+          let validKey = key => key.hasOwnProperty('id') && key.hasOwnProperty('name');
+          expect(keyResult.body.keys.every(validKey)).to.be.true;
         });
       });
       describe('Key Editing', function() {
@@ -384,7 +436,7 @@ describe('API', function() {
           uri:'/lists/',
           headers: {
             'Email': testAccount.email,
-            'Api-Key': testAccount.key.secret
+            'Apikey': testAccount.key
           }
         });
       });
@@ -847,9 +899,6 @@ describe('API', function() {
     });
   });
 });
-
-
-
 
 // Utility function
 function randomAccount() {
