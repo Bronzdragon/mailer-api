@@ -191,15 +191,22 @@ class MailerAPI {
             return new Response(200, $mailinglist->getDetails(true));
             break;
           case 'post':
-            if (!isset($request['body']['name']) || !isset($request['body']['email']) || !isset($request['body']['state'])) {
+            if ((!isset($request['body']['name'])  || !is_string($request['body']['name']))
+            ||  !(isset($request['body']['email']) || !is_string($request['body']['email']))
+            ||  !(isset($request['body']['state']) || !is_string($request['body']['state']))) {
+              var_dump($request['body']);
               return new Response(400, ['error' => 'Please provide a name, an email address and an initial state.']);
             }
-            $fieldList = isset($request['body']['fields']) ? isset($request['body']['fields']) : null;
+
+            $fieldList = (isset($request['body']['fields']) && is_array($request['body']['fields']))
+              ? $request['body']['fields']
+              : null;
+
             return $mailinglist->addSubscriber($request['body']['name'], $request['body']['email'], $request['body']['state'], $fieldList);
             break;
         }
-      } else {
-        if (is_null($subscriber = $mailinglist->getMailinglist($subscriberid))) {
+      } else { // If we're targeting a specific subscriber.
+        if (is_null($subscriber = $mailinglist->getSubscriber($subscriberid))) {
           return new Response(404, ['error' => 'No subscriber with that ID found.']);
         }
         switch ($request['method']) {
@@ -210,14 +217,19 @@ class MailerAPI {
             if (!isset($request['body']['name']) || !isset($request['body']['email']) || !isset($request['body']['state'])) {
               return new Response(400, ['error' => 'Please provide a name, an email address and an initial state.']);
             }
-            $fieldList = isset($request['body']['fields']) ? isset($request['body']['fields']) : null;
+            $fieldList = isset($request['body']['fields']) ? $request['body']['fields'] : null;
+
             return $subscriber->updateDetails($request['body']['name'], $request['body']['email'], $request['body']['state'], $fieldList, true);
             break;
           case 'patch':
+            if (!isset($request['body']['name']) && !isset($request['body']['email']) && !isset($request['body']['state']) && !isset($request['body']['fields'])) {
+              return new Response(400, ['error' => 'Please provide a name, an email address, a state, or a list of subscribers.']);
+            }
+
             $name = isset($request['body']['name']) ? $request['body']['name'] : $subscriber->name;
             $email = isset($request['body']['email']) ? $request['body']['email'] : $subscriber->email;
             $state = isset($request['body']['state']) ? $request['body']['state'] : $subscriber->state;
-            $fields = isset($request['body']['fields']) ? isset($request['body']['fields']) : null;
+            $fields = isset($request['body']['fields']) ? $request['body']['fields'] : null;
             return $subscriber->updateDetails($name, $email, $state, $fields, false);
             break;
           case 'delete':

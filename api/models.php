@@ -87,6 +87,7 @@ class user extends \RedBeanPHP\SimpleModel {
     $list->id = $id;
     $list->name = $name;
 
+
     if (!empty($subscribers)) {
       foreach ($subscribers as $subscriber) {
         if (!isset($subscriber['name']) || !isset($subscriber['email']) || !isset($subscriber['state'])) { continue; }
@@ -95,9 +96,10 @@ class user extends \RedBeanPHP\SimpleModel {
       }
     }
 
+    $this->bean->noLoad()->xownMailinglistList[] = $list;
     R::store($this->bean);
 
-    return new Response(201);
+    return new Response(201, $list->getDetails());
   }
 
   public function deleteUser(bool $confirm = false): Response {
@@ -188,6 +190,8 @@ class mailinglist extends \RedBeanPHP\SimpleModel {
       foreach ($this->bean->xownSubscriberList as $subscriber) {
         $returnValue['subscribers'][] = $subscriber->getDetails(true);
       }
+    } else {
+      $returnValue['subscribers'] = count($this->bean->xownSubscriberList);
     }
 
     return $returnValue;
@@ -247,12 +251,12 @@ class mailinglist extends \RedBeanPHP\SimpleModel {
       return new Response(400, [ 'error' => 'Mailing list with this name already exists.']);
     }
 
-    if (!empty($id) && R::load('subscriber', $id)->id !== 0) {
-      return new Response(400, [ 'error' => 'Invalid ID.']);
-    }
+    // if (!empty($id) && R::load('subscriber', $id)->id !== 0) {
+    //   return new Response(400, [ 'error' => 'Invalid ID.']);
+    // }
 
     $subscriber = R::dispense('subscriber');
-    $subscriber->id = $id;
+    // $subscriber->id = $id;
     $subscriber->name = $name;
     $subscriber->email = $email;
     $subscriber->state = $state;
@@ -265,8 +269,9 @@ class mailinglist extends \RedBeanPHP\SimpleModel {
       }
     }
 
+    $this->bean->noLoad()->xownSubscriberList[] = $subscriber;
     R::store($this->bean);
-    return new Response(201);
+    return new Response(201, $subscriber->getDetails(false));
   }
 
   public function deleteMailinglist(): Response {
@@ -290,6 +295,8 @@ class subscriber extends \RedBeanPHP\SimpleModel {
       foreach ($this->bean->xownFieldList as $field) {
         $returnValue['fields'][] = $field->getDetails();
       }
+    } else {
+      $returnValue['fields'] = count($this->bean->xownFieldList);
     }
     return $returnValue;
   }
@@ -311,20 +318,26 @@ class subscriber extends \RedBeanPHP\SimpleModel {
     $this->bean->state = $state;
 
     if ($clearFields) {
-      $this->bean->noLoad()->xownFieldList = [];
+      $this->bean->xownFieldList = [];
     }
+    R::store($this->bean);
+
 
     if (!empty($fields)) {
+      $beanList = [];
       foreach ($fields as $field) {
         if (!isset($field['name']) || !isset($field['value'])) { continue; }
-
-        if($fieldBean = reset($this->bean->withCondition(' name = ? ', [ $field['name'] ])->xownFieldList === false)){
+        $name = $field['name']; $value = $field['value'];
+        $fieldBean = reset($this->bean->withCondition(' name = ? ', [ $name ])->xownFieldList);
+        if($fieldBean === false){
           $fieldBean = R::dispense('field');
-          $this->bean->noLoad()->xownFieldList[] = $fieldBean;
+          $beanList[] = $fieldBean;
         }
-        $fieldBean->updateDetails($field['name'], $field['value']);
+        $fieldBean->updateDetails($name, $value);
       }
+      $this->bean->xownFieldList = $this->bean->xownFieldList + $beanList;
     }
+
     R::store($this->bean);
     return new Response(200);
   }
@@ -334,11 +347,19 @@ class subscriber extends \RedBeanPHP\SimpleModel {
     return ($field !== false ? $field->box() : null);
   }
 
-  public function addField(string $name, strint $value): Response {
+  public function addField(string $name, $value): Response {
     $field = reset($this->bean->withCondition(' name = ? ', [$name])->xownMailinglistList);
     if ($field !== false) {
       return new Response(400, [ 'error' => 'Mailing list with this name already exists.']);
     }
+
+    $field = R::dispense('field');
+    $field->updateDetails($name, $value);
+
+    $this->bean->noLoad()->xownFieldList[] = $field;
+    R::store($this->bean);
+
+    return new Response(201);
   }
 
   public function deleteSubscriber() : Response{
@@ -370,7 +391,7 @@ class field extends \RedBeanPHP\SimpleModel {
   }
 
   public function updateDetails(string $name, $value): Response {
-    switch ($value) {
+    switch (gettype($value)) {
       case 'boolean':
         $this->bean->value = $value ? 'true' : 'false';
         $this->bean->type = 'boolean';
@@ -389,6 +410,7 @@ class field extends \RedBeanPHP\SimpleModel {
     }
 
     $this->bean->name = $name;
+    R::store($this->bean);
     return new Response(200);
   }
 

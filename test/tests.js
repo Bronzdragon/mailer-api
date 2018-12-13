@@ -448,21 +448,21 @@ describe('API', function() {
   describe('Mailing List functionality', function() {
     let mailingListRequest;
     let testAccount;
-    before(function() {
-      return baseRequest.post({
+    before(async function() {
+      const result = await baseRequest.post({
         uri: '/account/',
         body: randomAccount()
-      }).then(result => {
-        testAccount = result.body.details;
-        createdAccounts.push(testAccount);
+      });
+      testAccount = result.body;
+      createdAccounts.push(testAccount);
 
-        mailingListRequest = baseRequest.defaults({
-          uri:'/lists/',
-          headers: {
-            'Email': testAccount.email,
-            'Apikey': testAccount.key
-          }
-        });
+      mailingListRequest = baseRequest.defaults({
+        uri:'/',
+        baseUrl: BASEURL + '/api/mailinglists/',
+        headers: {
+          'Email': testAccount.email,
+          'Apikey': testAccount.key.secret
+        }
       });
     });
 
@@ -470,116 +470,87 @@ describe('API', function() {
       it('Reject requests that are not authenticated.', async function() {
         let listName = randomString();
         let postRequest = await mailingListRequest.post({
-          uri: mailingListRequest.uri + `/${listName}/`,
           headers: null
         });
         expect(postRequest).to.have.property('statusCode').that.is.equal(401);
 
-        let putRequest = await mailingListRequest.put({
-          uri: mailingListRequest.uri + `/${listName}/`,
-          headers: null
-        });
-        expect(putRequest).to.have.property('statusCode').that.is.equal(401);
-
-        return mailingListRequest.get()
-        .then( result => {
-          let containsMailinglist = result.body['mailing-lists'].some(list => list.name = listName);
-          expect(containsMailinglist).to.be.false;
-        });
+        let getResult = await mailingListRequest.get();
+        let containsMailinglist = getResult.body.mailinglists.some(list => list.name = listName);
+        expect(containsMailinglist).to.be.false;
       });
       it('Creates new mailing lists.', async function(){
         // Without subscribers
-        let listName = {
-          post: randomString(),
-          put: randomString()
-        }
+        let listname = randomString();
 
-        let postRequest = await mailingListRequest.post({ uri: `/lists/${listName.post}/` });
+        let postRequest = await mailingListRequest.post({ body: { name: listname } });
         expect(postRequest).to.have.property('statusCode').that.is.equal(201);
 
-        let putRequest = await mailingListRequest.put({ uri: `/lists/${listName.put}/` });
-        expect(putRequest).to.have.property('statusCode').that.is.equal(201);
-
         let listnames = await mailingListRequest.get({})
-          .then(result => result.body['mailing-lists'])
+          .then(result => result.body.mailinglists)
           .map(list => list.name);
 
-        expect(listnames).to.include.members([listName.post, listName.put]);
+        expect(listnames).to.include.members([listname]);
       });
       it('Creates new mailing lists with subscribers.', async function() {
-        let listName = {
-          post: randomString(),
-          put: randomString()
-        }
+        let listname = randomString();
+
         let postRequest = await mailingListRequest.post({
-          uri: `/lists/${listName.post}/`,
-          body: { entries: [ randomSubscriber(), randomSubscriber(), randomSubscriber() ] }
+          body: {
+            name: listname,
+            subscribers: [ randomSubscriber(), randomSubscriber(), randomSubscriber() ]
+          }
         });
         expect(postRequest).to.have.property('statusCode').that.is.equal(201);
 
-        let putRequest = await mailingListRequest.put({
-          uri: `/lists/${listName.put}/`,
-          body: { entries: [ randomSubscriber(), randomSubscriber(), randomSubscriber() ] }
-        });
-        expect(putRequest).to.have.property('statusCode').that.is.equal(201);
-
         let listnames = await mailingListRequest.get({})
-          .then(result => result.body['mailing-lists'])
+          .then(result => result.body.mailinglists)
           .map(list => list.name);
-        expect(listnames).to.include.members([listName.post, listName.put]);
 
-        // TODO: Verify if the subscribers are saved properly?
+        expect(listnames).to.include.members([listname]);
       });
     });
     describe('Mailing list Viewing', function() {
-      it('Reject requests that are not authenticated.', function() {
-        let listName = randomString();
+      it('Reject requests that are not authenticated.', async function() {
+        let listname = randomString();
         let tests = [];
 
         // Cannot get overview.
-        tests.push(mailingListRequest.get({
+        const listRequest = await mailingListRequest.get({
           headers: null
-        }).then(result => {
-          expect(result).to.have.property('statusCode').that.is.equal(401);
-        }));
+        });
+        expect(listRequest).to.have.property('statusCode').that.is.equal(401);
 
         // Cannot get specifc list.
-        tests.push(mailingListRequest.post({
-          uri: `/lists/${listName.post}/`
+        const specificRequest = await mailingListRequest.post({
+          body: { name : listname }
         }).then(result => {
           return mailingListRequest.get({
-            uri: `/lists/${listName.post}/`,
+            uri: `/${result.body.id}/`,
             headers: null
           });
-        }).then (result => {
-          expect(result).to.have.property('statusCode').that.is.equal(401);
-        }));
-
-        return Promise.all(tests);
-      });
-      it('Shows all mailing lists for the authenticated account.', function () {
-        let expectedListNames = [randomString(), randomString(), randomString()];
-
-        return Promise.all(expectedListNames.map(
-          name => mailingListRequest.post({ uri: `/lists/${name}/`})
-        )).then(() => {
-          return mailingListRequest.get();
-        }).then(result => {
-          expect(result).to.have.property('statusCode').that.is.equal(200);
-          let actualListNames = result.body['mailing-lists'].map(entry => entry.name)
-          expect(actualListNames).to.include.members(expectedListNames);
         });
+        expect(specificRequest).to.have.property('statusCode').that.is.equal(401);
+
       });
-      it('Shows the details for any specific mailing list.', function() {
-        let listName = randomString();
-        return mailingListRequest.post({ uri: `/lists/${listName}/`})
-        .then(result => {
-          return mailingListRequest.get({ uri: `/lists/${listName}/`});
-        }).then(result => {
-          expect(result).to.have.property('statusCode').that.is.equal(200);
-          expect(result.body).to.have.property('name').that.is.equal(listName);
-          expect(result.body).to.have.property('subscribers').that.is.an('array');
-        });
+      it('Shows all mailing lists for the authenticated account.', async function () {
+        let expectedListNames = [randomString(), randomString()];
+
+        await Promise.all(expectedListNames.map(
+          name => mailingListRequest.post({ body: { name: name }})
+        ));
+        const result = await mailingListRequest.get();
+
+        expect(result).to.have.property('statusCode').that.is.equal(200);
+        let actualListNames = result.body.mailinglists.map(entry => entry.name);
+        expect(actualListNames).to.include.members(expectedListNames);
+      });
+      it('Shows the details for any specific mailing list.', async function() {
+        let listname = randomString();
+        const request = await mailingListRequest.post({ body: { name: listname}})
+        const result  = await mailingListRequest.get({ uri: `/${request.body.id}/`});
+        expect(result).to.have.property('statusCode').that.is.equal(200);
+        expect(result.body).to.have.property('name').that.is.equal(listname);
+        expect(result.body).to.have.property('subscribers').that.is.an('array');
       });
     });
     describe('Mailing list Editing', function() {
@@ -587,12 +558,12 @@ describe('API', function() {
         let oldName = randomString();
         let newName = randomString();
 
-        await mailingListRequest.post({
-          uri: `/lists/${oldName}/`
-        });
+        let listId = (await mailingListRequest.post({
+          body: { name: oldName }
+        })).body.id;
 
         let result = await mailingListRequest.put({
-          uri: `/lists/${oldName}/`,
+          uri: `/${listId}/`,
           headers: null,
           body: { name: newName }
         });
@@ -600,143 +571,128 @@ describe('API', function() {
         expect(result).to.have.property('statusCode').that.is.equal(401);
       });
       it('Changes the Mailing list name.', async function() {
-        let oldName = randomString();
-        let newName = randomString();
+        const oldPutName   = randomString();
+        const oldPatchName   = randomString();
+        const putName   = randomString();
+        const patchName = randomString();
 
-        await mailingListRequest.post({
-          uri: `/lists/${oldName}/`
-        });
+        const putRequest = mailingListRequest.post({
+          body: { name: oldPutName }
+        }).then(result =>
+          mailingListRequest.put({
+            uri: `/${result.body.id}/`,
+            body: {
+              name: putName,
+              subscribers: []
+            }
+          }).then( () =>
+            mailingListRequest.get({
+              uri: `/${result.body.id}/`,
+            })
+          )
+        );
 
-        await mailingListRequest.put({
-          uri: `/lists/${oldName}/`,
-          body: { name: newName }
-        });
+        const patchRequest = mailingListRequest.post({
+          body: { name: oldPatchName }
+        }).then(result =>
+          mailingListRequest.patch({
+            uri: `/${result.body.id}/`,
+            body: {
+              name: patchName,
+            }
+          }).then( () =>
+            mailingListRequest.get({
+              uri: `/${result.body.id}/`,
+            })
+          )
+        );
+        let [putResult, patchResult] = await Promise.all([putRequest, patchRequest]);
 
-        let result = await mailingListRequest.get({
-            uri: `/lists/${newName}/`
-        });
-
-        expect(result).to.have.property('statusCode').that.is.equal(200);
-        expect(result.body).to.have.property('name').that.is.equal(newName);
+        expect(putResult).to.have.property('statusCode').that.is.equal(200);
+        expect(putResult.body).to.have.property('name').that.is.equal(putName);
+        expect(patchResult).to.have.property('statusCode').that.is.equal(200);
+        expect(patchResult.body).to.have.property('name').that.is.equal(patchName);
       });
     });
     describe('Mailing list Deletion', function() {
       it('Reject requests that are not authenticated.', async function() {
         let name = randomString();
 
-        await mailingListRequest.post({
-          uri: `/lists/${name}/`
-        });
+        const listDetails = (await mailingListRequest.post({
+          body: { name: name }
+        })).body;
 
         let result = await mailingListRequest.delete({
-          uri: `/lists/${name}/`,
+          uri: `/${listDetails.id}/`,
           headers: null
         });
 
         expect(result).to.have.property('statusCode').that.is.equal(401);
       });
-      it('Deletes mailing lists by ID', function() {
-        expect.fail("Not yet implemented");
-      });
-      it('Deletes mailing lists by name', async function() {
+      it('Deletes mailing lists.', async function() {
         let name = randomString();
 
-        await mailingListRequest.post({
-          uri: `/lists/${name}/`
+        const listDetails = (await mailingListRequest.post({
+          body: { name: name }
+        })).body;
+
+        let result = await mailingListRequest.delete({
+          uri: `/${listDetails.id}/`,
         });
 
-        await mailingListRequest.delete({
-          uri: `/lists/${name}/`,
-        });
-
-        let result = await mailingListRequest.get({
-          uri: `/lists/${name}/`,
-        });
-
-        expect(result).to.have.property('statusCode').that.is.equal(404);
+        expect(result).to.have.property('statusCode').that.is.equal(200);
       });
     });
 
     describe('Subscriber functionality', function() {
-      let listname;
+      let mailingList;
       let subscriberRequest;
-      before(function() {
-        listname = randomString();
+      before(async function() {
+        postRequest = (await mailingListRequest.post({ body: { name: randomString() } })).body;
+
         subscriberRequest = baseRequest.defaults({
           uri: '/',
-          baseUrl: `http://mail-api:8000/API/lists/${listname}/`,
+          baseUrl: BASEURL + `/api/mailinglists/${postRequest.id}/subscribers/`,
           headers: {
             'Email': testAccount.email,
-            'Api-Key': testAccount.key.secret
+            'Apikey': testAccount.key.secret
           }
         });
+        let payload = randomSubscriber();
 
-        return subscriberRequest.post("/");
+        subscriberRequest.post({ body: payload });
       });
       describe('Subscriber Adding', function() {
         it('Reject requests that are not authenticated.', async function() {
           let postSubscriber = randomSubscriber();
-          let putSubscriber  = randomSubscriber();
 
-          let postRequest = mailingListRequest.post({
-            uri: postSubscriber.email,
+          const request = await mailingListRequest.post({
             body: postSubscriber,
             headers: null
-          }).then(result => {
-            expect(result).to.have.property('statusCode').that.is.equal(401);
           });
+          expect(request).to.have.property('statusCode').that.is.equal(401);
 
-          let putRequest = mailingListRequest.put({
-            uri: putSubscriber.email,
-            body: putSubscriber,
-            headers: null
-          }).then(result => {
-            expect(result).to.have.property('statusCode').that.is.equal(401);
-          });
+          let getRequest = await subscriberRequest.get({uri: `/${request.body.id}/`});
 
-          await Promise.all([postRequest, putRequest]);
-
-          let postGetRequest = mailingListRequest.get({uri: `/${postSubscriber.email}/`});
-          let putGetRequest  = mailingListRequest.get({uri: `/${putSubscriber.email}/` });
-
-          return Promise.all([postGetRequest, putGetRequest])
-          .then(([postResult, putResult]) => {
-            expect(postResult).to.have.property('statusCode').that.is.equal(404);
-            expect(putResult ).to.have.property('statusCode').that.is.equal(404);
-          });
+          expect(getRequest).to.have.property('statusCode').that.is.equal(404);
         });
         it('Allows adding single subscribers.', async function() {
-          let postSubscriber = randomSubscriber();
-          let putSubscriber  = randomSubscriber();
+          let subscriber = randomSubscriber();
 
-          let postRequest = mailingListRequest.post({
-            uri: postSubscriber.email,
-            body: postSubscriber
-          }).then(result => {
-            expect(result).to.have.property('statusCode').that.is.equal(201);
+          const request = await subscriberRequest.post({
+            body: subscriber
           });
+          expect(request).to.have.property('statusCode').that.is.equal(201);
 
-          let putRequest = mailingListRequest.put({
-            uri: putSubscriber.email,
-            body: putSubscriber
-          }).then(result => {
-            expect(result).to.have.property('statusCode').that.is.equal(201);
-          });
+          let getRequest = await subscriberRequest.get({uri: `/${request.body.id}/`});
+          expect(getRequest).to.have.property('statusCode').that.is.equal(200);
 
-          await Promise.all([postRequest, putRequest]);
-
-          let postGetRequest = mailingListRequest.get({uri: postSubscriber.email});
-          let putGetRequest  = mailingListRequest.get({uri: putSubscriber.email });
-
-          return Promise.all([postGetRequest, putGetRequest])
-          .then(([postResult, putResult]) => {
-            expect(postResult).to.have.property('statusCode').that.is.equal(200);
-            expect(postResult.body).to.deep.equal(postSubscriber);
-            expect(putResult).to.have.property('statusCode').that.is.equal(200);
-            expect(putResult.body).to.deep.equal(putSubscriber);
-          });
+          expect(getRequest.body).to.have.property('name').that.is.equal(subscriber.name);
+          expect(getRequest.body).to.have.property('email').that.is.equal(subscriber.email);
+          expect(getRequest.body).to.have.property('state').that.is.equal(subscriber.state);
+          expect(getRequest.body).to.have.property('fields').that.is.deep.equal(subscriber.fields);
         });
-        it('Allows adding subscribers in bulk.', async function() {
+        it.skip('Allows adding subscribers in bulk.', async function() {
           let postSubscribers = [randomSubscriber(), randomSubscriber(), randomSubscriber()];
           let putSubscribers  = [randomSubscriber(), randomSubscriber(), randomSubscriber()];
 
@@ -765,32 +721,31 @@ describe('API', function() {
         it('Reject requests that are not authenticated.', async function() {
           let subscriber = randomSubscriber();
 
-          await mailingListRequest.post({
-            uri: subscriber.email,
+          let request = await subscriberRequest.post({
             body: subscriber
           });
 
-          return subscriberRequest.get({
-            uri: subscriber.email,
-            headers: null
-          }).then(result => {
-            expect(result).have.property('statusCode').that.is.equal(401);
+          let result = await subscriberRequest.get({
+            headers: null,
+            uri: `/${request.body.id}/`
           });
-
+          expect(result).have.property('statusCode').that.is.equal(401);
         });
         it('Shows the details for any specific subscriber.', async function() {
           let subscriber = randomSubscriber();
-          await mailingListRequest.post({
-            uri: subscriber.email,
+
+          let request = await subscriberRequest.post({
             body: subscriber
           });
 
-          return subscriberRequest.get({
-            uri: subscriber.email,
-          }).then(result => {
-            expect(result).have.property('statusCode').that.is.equal(200);
-            expect(body).to.deep.equal(subscriber);
+          let result = await subscriberRequest.get({
+            uri: `/${request.body.id}/`
           });
+
+          expect(result.body).to.have.property('name').that.is.equal(subscriber.name);
+          expect(result.body).to.have.property('email').that.is.equal(subscriber.email);
+          expect(result.body).to.have.property('state').that.is.equal(subscriber.state);
+          expect(result.body).to.have.property('fields').that.is.deep.equal(subscriber.fields);
         });
       });
       describe('Subscriber Editing', function() {
@@ -799,125 +754,171 @@ describe('API', function() {
           let putSubscriber   = randomSubscriber();
           let patchSubscriber = randomSubscriber();
 
-          await mailingListRequest.post({
-            uri: oldSubscriber.email,
+          const subscriberId = (await subscriberRequest.post({
             body: oldSubscriber
-          });
+          })).body.id;
 
-          await subscriberRequest.put({
-            uri: oldSubscriber.email,
+          const putResult = await subscriberRequest.put({
+            uri: `/${subscriberId}/`,
             body: putSubscriber,
             headers: null
-          }).then(() => {
-            return subscriberRequest.get({uri: `/${putSubscriber.email}/`});
-          }).then(result => {
-            expect(result).have.property('statusCode').that.is.equal(404);
           });
+          expect(putResult).have.property('statusCode').that.is.equal(401);
 
-          await subscriberRequest.put({
-            uri: oldSubscriber.email,
+          const patchResult = await subscriberRequest.patch({
+            uri: `/${subscriberId}/`,
             body: patchSubscriber,
             headers: null
-          }).then(() => {
-            return subscriberRequest.get({uri: `/${patchSubscriber.email}/`});
-          }).then(result => {
-            expect(result).have.property('statusCode').that.is.equal(404);
           });
+          expect(patchResult).have.property('statusCode').that.is.equal(401);
+
+          const getResult = await subscriberRequest.get({uri: `/${subscriberId}/`});
+          expect(getResult.body).to.have.property('name').that.is.equal(oldSubscriber.name);
+          expect(getResult.body).to.have.property('email').that.is.equal(oldSubscriber.email);
+          expect(getResult.body).to.have.property('state').that.is.equal(oldSubscriber.state);
+          expect(getResult.body).to.have.property('fields').that.is.deep.equal(oldSubscriber.fields);
+
         });
-        it('Updates name, email and state.', async function() {
-          let oldPutSubscriber = randomSubscriber();
-          let newPutSubscriber = randomSubscriber();
+        it('Updates name, email and state via put.', async function() {
+          const oldSubscriber = randomSubscriber();
+          const newSubscriber = randomSubscriber();
 
-          await mailingListRequest.post({
-            uri: oldPutSubscriber.email,
-            body: oldPutSubscriber
-          }).then(() => {
-            return subscriberRequest.put({
-              uri: oldPutSubscriber.email,
-              body: newPutSubscriber,
-            });
-          }).then(() => {
-            return subscriberRequest.get({uri: `/${newPutSubscriber.email}/`});
-          }).then(result => {
-            expect(result).to.have.property('statusCode').that.is.equal(200);
-            expect(result.body).to.have.property('name').that.is.equal(newPutSubscriber.name);
-            expect(result.body).to.have.property('email').that.is.equal(newPutSubscriber.email);
-            expect(result.body).to.have.property('state').that.is.equal(newPutSubscriber.state);
+          const subscriberId = (await subscriberRequest.post({
+            body: oldSubscriber
+          })).body.id;
+
+          await subscriberRequest.put({
+            uri: `/${subscriberId}/`,
+            body: newSubscriber,
           });
 
-          let oldPatchSubscriber = randomSubscriber();
-          let newPatchSubscriber = randomSubscriber();
+          const result = await subscriberRequest.get({uri: `/${subscriberId}/`});
 
-          await mailingListRequest.post({
-            uri: oldPatchSubscriber.email,
-            body: oldPatchSubscriber
-          }).then(() => {
-            return subscriberRequest.patch({
-              uri: oldPatchSubscriber.email,
-              body: newPatchSubscriber,
-            });
-          }).then(() => {
-            return subscriberRequest.get({uri: `/${newPatchSubscriber.email}/`});
-          }).then(result => {
-            expect(result).have.property('statusCode').that.is.equal(200);
-            expect(result.body).to.have.property('name').that.is.equal(newPatchSubscriber.name);
-            expect(result.body).to.have.property('email').that.is.equal(newPatchSubscriber.email);
-            expect(result.body).to.have.property('state').that.is.equal(newPatchSubscriber.state);
-          });
+          expect(result).to.have.property('statusCode').that.is.equal(200);
+          expect(result.body).to.have.property('name').that.is.equal(newSubscriber.name);
+          expect(result.body).to.have.property('email').that.is.equal(newSubscriber.email);
+          expect(result.body).to.have.property('state').that.is.equal(newSubscriber.state);
         });
+        it('Updates name, email and state via patch.', async function() {
+          const oldSubscriber = randomSubscriber();
+          const newSubscriber = randomSubscriber();
+          const patchRequests = [];
 
-        describe('Field Editing', function() {
-          it('Reject requests that are not authenticated.');
-          it('Allows adding fields in bulk.');
-          it('Rejects requests missing a name, value or both.');
+          const subscriberId = (await subscriberRequest.post({
+            body: oldSubscriber
+          })).body.id;
 
-          it('Allows updating the name and value of single fields.');
-          it('Allows updating the name and value of fields in bulk.');
+          await subscriberRequest.patch({
+            uri: `/${subscriberId}/`,
+            body: {name: newSubscriber.name},
+          });
+          await subscriberRequest.patch({
+            uri: `/${subscriberId}/`,
+            body: {email: newSubscriber.email},
+          });
+          await subscriberRequest.patch({
+            uri: `/${subscriberId}/`,
+            body: {state: newSubscriber.state},
+          });
 
-          it('Allows partial updates by name or value of single fields.');
-          it('Allows partial updates by name or value of fields in bulk.');
+          const result = await subscriberRequest.get({uri: `/${subscriberId}/`});
+
+          expect(result).to.have.property('statusCode').that.is.equal(200);
+          expect(result.body).to.have.property('name').that.is.equal(newSubscriber.name);
+          expect(result.body).to.have.property('email').that.is.equal(newSubscriber.email);
+          expect(result.body).to.have.property('state').that.is.equal(newSubscriber.state);
+
+        });
+        it('Can replace the field list (via post).', async function() {
+          const subscriber = randomSubscriber();
+          const subscriberId = (await subscriberRequest.post({
+            body: subscriber
+          })).body.id;
+
+          let newFields = [];
+          // Existing field
+          newFields.push(sampleArray(subscriber.fields));
+          // Existing field with new value
+          newFields.push({
+            name: sampleArray(subscriber.fields).name,
+            value: randomField().value
+          });
+          // New field
+          newFields.push(randomField());
+
+          let newSubscriber = subscriber;
+          newSubscriber.fields = newFields;
+
+          await subscriberRequest.put({
+            uri: `/${subscriberId}/`,
+            body: newSubscriber,
+          });
+
+          const result = await subscriberRequest.get({uri: `/${subscriberId}/`});
+          expect(result.body).to.have.property('fields').to.deep.have.members(newFields);
+        });
+        it('Can add/update fields without deleting (via patch).', async function() {
+          const subscriber = randomSubscriber();
+          const subscriberId = (await subscriberRequest.post({
+            body: subscriber
+          })).body.id;
+
+          let newFields = [];
+          // Existing field
+          newFields.push(sampleArray(subscriber.fields));
+          // Existing field with new value
+          newFields.push({
+            name: sampleArray(subscriber.fields).name,
+            value: randomField().value
+          });
+          // New field
+          newFields.push(randomField());
+
+          let newSubscriber = subscriber;
+          newSubscriber.fields = newFields;
+
+          await subscriberRequest.patch({
+            uri: `/${subscriberId}/`,
+            body: newSubscriber,
+          });
+
+          const result = await subscriberRequest.get({uri: `/${subscriberId}/`});
+          expect(result.body).to.have.property('fields').to.deep.contain.members(newFields);
         });
       });
       describe('Subscriber Deletion', function() {
         it('Reject requests that are not authenticated.', async function () {
           let subscriber = randomSubscriber();
-          await mailingListRequest.post({
-            uri: subscriber.email,
+          const postRequest = await subscriberRequest.post({
             body: subscriber
-          }).then((result) => {
-            expect(result).have.property('statusCode').that.is.equal(201);
           });
+          expect(postRequest).have.property('statusCode').that.is.equal(201);
 
-          await subscriberRequest.delete({
-            uri: subscriber.email,
+          const deleteRequest = await subscriberRequest.delete({
+            uri: `${postRequest.body.id}`,
             headers: null
-          }).then(result => {
-            expect(result).have.property('statusCode').that.is.equal(401);
           });
+          expect(deleteRequest).have.property('statusCode').that.is.equal(401);
 
-          return subscriberRequest.get({uri: subscriber.email})
-          .then(result => {
-            expect(result).have.property('statusCode').that.is.equal(200);
-            expect(result).have.property('body').that.is.deep.equal(subscriber);
-          });
+          const getRequest = await subscriberRequest.get({uri: `${postRequest.body.id}`});
+          expect(getRequest).have.property('statusCode').that.is.equal(200);
+          expect(getRequest.body).have.property('name').that.is.equal(subscriber.name);
+          expect(getRequest.body).have.property('email').that.is.equal(subscriber.email);
         });
         it('Deletes subscribers from mailing lists.', async function () {
           let subscriber = randomSubscriber();
-          await mailingListRequest.post({
-            uri: subscriber.email,
+          const postRequest = await subscriberRequest.post({
             body: subscriber
           });
+          expect(postRequest).have.property('statusCode').that.is.equal(201);
 
-          await subscriberRequest.delete({
-            uri: subscriber.email
-          }).then(result => {
-            expect(result).have.property('statusCode').that.is.equal(200);
+          const deleteRequest = await subscriberRequest.delete({
+            uri: `${postRequest.body.id}`,
           });
+          expect(deleteRequest).have.property('statusCode').that.is.equal(200);
 
-          return subscriberRequest.get({uri: subscriber.email})
-          .then(result => {
-            expect(result).have.property('statusCode').that.is.equal(404);
-          });
+          const getRequest = await subscriberRequest.get({uri: `${postRequest.body.id}`});
+          expect(getRequest).have.property('statusCode').that.is.equal(404);
         });
       });
     });
@@ -935,18 +936,63 @@ function randomAccount() {
 
 function randomSubscriber() {
   const STATES = ['active', 'unsubscribed', 'junk', 'bounced', 'unconfirmed'];
-  const name = randomString(8);
+  const account = randomAccount();
+  const numFields = Math.floor(Math.random() * 10);
+
+  let fields = [];
+  for (var i = 0; i < numFields; i++) {
+    fields.push(randomField());
+  }
   return {
-    name: name,
-    email: name + '@gmail.com',
-    state: STATES[Math.floor(Math.random() * STATES.length)],
-    fields: [
-      { name: 'Creation-date', value: new Date() },
-      { name: 'letters-received', value: Math.floor(Math.random() * 20)},
-      { name: 'isAdult', value: (Math.random() > 0.5) },
-      { name: 'favourite food', value: 'Pizza' }
-    ]
+    name: account.name,
+    email: account.email,
+    state: sampleArray(STATES),
+    fields: fields
   };
+}
+
+function randomField(type){
+  const TYPES = ['number', 'boolean', 'string', 'date'];
+  type = TYPES.includes(type) ? type : 'random';
+  if (type === 'random') {
+    type = sampleArray(TYPES);
+  }
+  let name, value;
+  let categories;
+  switch (type) {
+    case 'number':
+      categories = ['letters-received', 'paintings', 'adverts-clicked', 'coffee-drank', 'cards-gotten'];
+      name = sampleArray(categories);
+      value = Math.floor(Math.random() * 10)
+      break;
+    case 'boolean':
+      categories = ['is-adult', 'met', 'handsome', 'party-goer', 'smart'];
+      name = sampleArray(categories);
+      value = (Math.random() > 0.5)
+      break;
+    case 'string':
+      categories = ['pincode', 'nuke-launce-codes', 'safe-word', 'favourite-book'];
+      name = sampleArray(categories);
+      value = randomString(22);
+      break;
+    case 'date':
+      categories = ['Birthdate', 'wedding-anniversary', 'some-date', 'purchase-date', 'unbirthdate'];
+      name = sampleArray(categories);
+      value = randomDate().toString();
+      break;
+  }
+  return {name: name, value: value};
+}
+
+function randomDate() {
+  const startDate = new Date(1970, 0, 1).getTime();
+  const endDate = new Date().getTime();
+  return new Date(startDate + Math.random() * (endDate - startDate));
+}
+
+function sampleArray(array) {
+  if (!Array.isArray(array) || array.length < 1) { return null; }
+  return array[Math.floor(Math.random() * array.length)];
 }
 
 function randomString(length = 6) {
@@ -957,4 +1003,8 @@ function randomString(length = 6) {
     text += possible.charAt(Math.floor(Math.random() * possible.length));
 
   return text;
+}
+
+function randomDigit(length = 6) {
+  Math.floor(Math.random()*Math.pow(10, length)).toString().padStart(length, '0');
 }
