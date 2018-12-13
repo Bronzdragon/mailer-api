@@ -692,29 +692,16 @@ describe('API', function() {
           expect(getRequest.body).to.have.property('state').that.is.equal(subscriber.state);
           expect(getRequest.body).to.have.property('fields').that.is.deep.equal(subscriber.fields);
         });
-        it.skip('Allows adding subscribers in bulk.', async function() {
+        it('Allows adding subscribers in bulk.', async function() {
           let postSubscribers = [randomSubscriber(), randomSubscriber(), randomSubscriber()];
-          let putSubscribers  = [randomSubscriber(), randomSubscriber(), randomSubscriber()];
 
-          let postRequest = mailingListRequest.post({
-            uri: postSubscribers.email,
+          let postRequest = await subscriberRequest.post({
             body: postSubscribers,
-          }).then(result => {
-            return expect(result).to.have.property('statusCode').that.is.equal(201);
-          });
+          })
+          return expect(postRequest).to.have.property('statusCode').that.is.equal(200);
 
-          let putRequest = mailingListRequest.put({
-            uri: putSubscribers.email,
-            body: putSubscribers,
-          }).then(result => {
-            return expect(result).to.have.property('statusCode').that.is.equal(201);
-          });
-
-          await Promise.all([postRequest, putRequest]);
-
-          let actualSubscribers = (await mailingListRequest.get('/')).body.subscribers;
+          let actualSubscribers = (await mailingListRequest.get()).body.subscribers;
           expect(actualSubscribers).to.deep.contain.members(postSubscribers);
-          expect(actualSubscribers).to.deep.contain.members(putSubscribers);
         });
       });
       describe('Subscriber Viewing', function() {
@@ -883,7 +870,7 @@ describe('API', function() {
           });
 
           const result = await subscriberRequest.get({uri: `/${subscriberId}/`});
-          expect(result.body).to.have.property('fields').to.deep.contain.members(newFields);
+          expect(result.body).to.have.property('fields').to.deep.include.members(newFields);
         });
       });
       describe('Subscriber Deletion', function() {
@@ -937,7 +924,7 @@ function randomAccount() {
 function randomSubscriber() {
   const STATES = ['active', 'unsubscribed', 'junk', 'bounced', 'unconfirmed'];
   const account = randomAccount();
-  const numFields = Math.floor(Math.random() * 10);
+  const numFields = 5 + Math.ceil(Math.random() * 5);
 
   let fields = [];
   for (var i = 0; i < numFields; i++) {

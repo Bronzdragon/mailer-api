@@ -246,17 +246,12 @@ class mailinglist extends \RedBeanPHP\SimpleModel {
   }
 
   public function addSubscriber(string $name, string $email, string $state, array $fields = null): Response {
-    $subscriber = reset($this->bean->withCondition(' name = ? ', [$name])->xownMailinglistList);
+    $subscriber = reset($this->bean->withCondition(' email = ? ', [$email])->xownSubscriberList);
     if ($subscriber !== false) {
-      return new Response(400, [ 'error' => 'Mailing list with this name already exists.']);
+      return new Response(400, [ 'error' => 'Subscriber with this email address already exists.']);
     }
 
-    // if (!empty($id) && R::load('subscriber', $id)->id !== 0) {
-    //   return new Response(400, [ 'error' => 'Invalid ID.']);
-    // }
-
     $subscriber = R::dispense('subscriber');
-    // $subscriber->id = $id;
     $subscriber->name = $name;
     $subscriber->email = $email;
     $subscriber->state = $state;

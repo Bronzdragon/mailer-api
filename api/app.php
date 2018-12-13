@@ -191,18 +191,35 @@ class MailerAPI {
             return new Response(200, $mailinglist->getDetails(true));
             break;
           case 'post':
-            if ((!isset($request['body']['name'])  || !is_string($request['body']['name']))
-            ||  !(isset($request['body']['email']) || !is_string($request['body']['email']))
-            ||  !(isset($request['body']['state']) || !is_string($request['body']['state']))) {
-              var_dump($request['body']);
-              return new Response(400, ['error' => 'Please provide a name, an email address and an initial state.']);
-            }
+            function addSubscriber($body, $mailinglist) {
+              if ((!isset($body['name'])  || !is_string($body['name']))
+              ||  (!isset($body['email']) || !is_string($body['email']))
+              ||  (!isset($body['state']) || !is_string($body['state']))) {
+                // echo "<p>INVALID STATE DETECTED!:</p>";
+                // var_dump($body);
+                return new Response(400, ['error' => 'Please provide a name, an email address and an initial state.']);
+              }
 
-            $fieldList = (isset($request['body']['fields']) && is_array($request['body']['fields']))
-              ? $request['body']['fields']
+              $fieldList = (isset($body['fields']) && is_array($body['fields']))
+              ? $body['fields']
               : null;
 
-            return $mailinglist->addSubscriber($request['body']['name'], $request['body']['email'], $request['body']['state'], $fieldList);
+              return $mailinglist->addSubscriber($body['name'], $body['email'], $body['state'], $fieldList);
+            }
+
+            if(has_string_keys($request['body'])){
+              return addSubscriber($request['body'], $mailinglist);
+            } else {
+              $total = 0;
+              foreach ($request['body'] as $req) {
+                $response = addSubscriber($req, $mailinglist);
+                // var_dump($response);
+                if ($response->code === 201) { $total += 1; }
+                // var_dump($total);
+              }
+              return new Response(200, ['message' => "$total subscribers added"]);
+            }
+
             break;
         }
       } else { // If we're targeting a specific subscriber.
@@ -239,40 +256,6 @@ class MailerAPI {
       }
       return new Response(501);
     }
-
-    // Field endpoint
-  //   if (preg_match('#^/api/mailinglists/(\d+)/subscribers/(\d+)/fields/?$#i', $request['endpoint'], $matches) === 1) {
-  //     $listId = $matches[1];
-  //     $subscriberid = $matches[2];
-  //
-  //     if (is_null($user = user::getAuthenticatedUser($request['headers']))) {
-  //       return new Response(401, ['error' => 'You are not authenticated']);
-  //     }
-  //     if (is_null($mailinglist = $user->getMailinglist($listId))) {
-  //       return new Response(404, ['error' => 'No mailing list with that ID found.']);
-  //     }
-  //     if (is_null($subscriber = $mailinglist->getMailinglist($subscriberid))) {
-  //       return new Response(404, ['error' => 'No subscriber with that ID found.']);
-  //     }
-  //
-  //     switch ($request['method']) {
-  //       case 'get':
-  //
-  //         break;
-  //       case 'put':
-  //         // code...
-  //         break;
-  //       case 'patch':
-  //         // code...
-  //         break;
-  //       case 'delete':
-  //         // code...
-  //         break;
-  //     }
-  //     return new Response(501);
-  //   }
-  //
-    // endpoint invalid.
     return new Response(404, ['error' => 'Not a valid endpoint.']);
   }
 
@@ -301,4 +284,8 @@ class MailerAPI {
         R::setup();
     }
   }
+}
+
+function has_string_keys(array $array) {
+  return count(array_filter(array_keys($array), 'is_string')) > 0;
 }
