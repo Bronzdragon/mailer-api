@@ -223,15 +223,17 @@ class mailinglist extends \RedBeanPHP\SimpleModel {
         $email = isset($subscriberInfo['email']) ? $subscriberInfo['email'] : $subscriber->email;
         $state = isset($subscriberInfo['state']) ? $subscriberInfo['state'] : $subscriber->state;
         $fields = isset($subscriberInfo['fields']) ? $subscriberInfo['fields'] : $subscriber->xownFieldList;
+        $forceState = isset($subscriberInfo['forceState']) ? isset($subscriberInfo['forceState']) : false;
 
-        $subscriber->updateDetails($name, $email, $state, true, $fields);
+        $subscriber->updateDetails($name, $email, $state, $forceState, true, $fields);
       } elseif ($subscriber = reset($this->bean->withCondition(' email = ? ', [$subscriberInfo['email']]) !== false)) {
         $email = $subscriber->email;
         $name = isset($subscriberInfo['name']) ? $subscriberInfo['name'] : $subscriber->name;
         $state = isset($subscriberInfo['state']) ? $subscriberInfo['state'] : $subscriber->state;
         $fields = isset($subscriberInfo['fields']) ? $subscriberInfo['fields'] : $subscriber->xownFieldList;
+        $forceState = isset($subscriberInfo['forceState']) ? isset($subscriberInfo['forceState']) : false;
 
-        $subscriber->updateDetails($name, $email, $state, true, $fields);
+        $subscriber->updateDetails($name, $email, $state, $forceState, true, $fields);
       } else {
         if (!isset($subscriberInfo['name']) || !isset($subscriberInfo['state'])) { continue;  }
         $fields = isset($subscriberInfo['fields']) ? $subscriberInfo['fields'] : null;
@@ -296,7 +298,7 @@ class subscriber extends \RedBeanPHP\SimpleModel {
     return $returnValue;
   }
 
-  public function updateDetails(string $name, string $email, string $state, array $fields = null, bool $clearFields = false): Response {
+  public function updateDetails(string $name, string $email, string $state, bool $forceState = false, array $fields = null, bool $clearFields = false): Response {
     if (filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
       return new Response(400, [ 'error' => 'Email not formatted correctly' ]);
     }
@@ -310,7 +312,10 @@ class subscriber extends \RedBeanPHP\SimpleModel {
 
     $this->bean->name = $name;
     $this->bean->email = $email;
-    $this->bean->state = $state;
+    if ($forceState) {
+      $this->bean->state = $state;
+      // code...
+    }
 
     if ($clearFields) {
       $this->bean->xownFieldList = [];

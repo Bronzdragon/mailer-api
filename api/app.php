@@ -236,7 +236,7 @@ class MailerAPI {
             }
             $fieldList = isset($request['body']['fields']) ? $request['body']['fields'] : null;
 
-            return $subscriber->updateDetails($request['body']['name'], $request['body']['email'], $request['body']['state'], $fieldList, true);
+            return $subscriber->updateDetails($request['body']['name'], $request['body']['email'], $request['body']['state'], true, $fieldList, true);
             break;
           case 'patch':
             if (!isset($request['body']['name']) && !isset($request['body']['email']) && !isset($request['body']['state']) && !isset($request['body']['fields'])) {
@@ -247,7 +247,8 @@ class MailerAPI {
             $email = isset($request['body']['email']) ? $request['body']['email'] : $subscriber->email;
             $state = isset($request['body']['state']) ? $request['body']['state'] : $subscriber->state;
             $fields = isset($request['body']['fields']) ? $request['body']['fields'] : null;
-            return $subscriber->updateDetails($name, $email, $state, $fields, false);
+            $forceState = isset($request['body']['forceState']) ? isset($request['body']['forceState']) : false;
+            return $subscriber->updateDetails($name, $email, $state, $forceState, $fields, false);
             break;
           case 'delete':
             return $subscriber->deleteSubscriber();

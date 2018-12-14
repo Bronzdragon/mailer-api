@@ -797,15 +797,18 @@ describe('API', function() {
 
           await subscriberRequest.patch({
             uri: `/${subscriberId}/`,
-            body: {name: newSubscriber.name},
+            body: {name: newSubscriber.name}
           });
           await subscriberRequest.patch({
             uri: `/${subscriberId}/`,
-            body: {email: newSubscriber.email},
+            body: {email: newSubscriber.email}
           });
           await subscriberRequest.patch({
             uri: `/${subscriberId}/`,
-            body: {state: newSubscriber.state},
+            body: {
+              state: newSubscriber.state,
+              forceState: true
+            }
           });
 
           const result = await subscriberRequest.get({uri: `/${subscriberId}/`});
@@ -851,18 +854,15 @@ describe('API', function() {
           })).body.id;
 
           let newFields = [];
-          // Existing field
-          newFields.push(sampleArray(subscriber.fields));
-          // Existing field with new value
-          newFields.push({
-            name: sampleArray(subscriber.fields).name,
-            value: randomField().value
-          });
-          // New field
+          do {
+            newFields[0] = sampleArray(subscriber.fields);
+            newFields[1] = sampleArray(subscriber.fields);
+          } while (newFields[0] === newFields[1]);
+          newFields[1].value = randomField().value;
           newFields.push(randomField());
 
           let newSubscriber = subscriber;
-          newSubscriber.fields = newFields;
+          newSubscriber.fields = newFields
 
           await subscriberRequest.patch({
             uri: `/${subscriberId}/`,
