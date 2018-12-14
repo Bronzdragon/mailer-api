@@ -20,21 +20,38 @@ class Client {
   _promptLogin() {
     this.element.innerHTML = `
     <div id="error-banner" style="display:none;"></div>
-    <form>
-      <div>
-        <label for="name">Prefered name:</label>
-        <input type="text" id="name" name="user_name">
-      </div>
-      <div>
-        <label for="email">Email address:</label>
-        <input type="text" id="email" name="user_email">
-      </div>
-      <div>
-        <button type="button" id="accept-button" onclick="client.submitLoginDetails(this.form)">ok</button>
-      </div>
 
-    </form>
-    <a id="show-token-form" href="#">I already have a token</a>
+    <div class="both">
+      <form class="login">
+        <div class="instructions">Log in with existing account</div>
+        <div>
+          <label for="email">Registered email:</label>
+          <input type="text" id="email" name="user_email">
+        </div>
+        <div>
+          <label for="token">Your token:</label>
+          <input type="text" id="token" name="user_token">
+        </div>
+        <div>
+          <button type="button" id="accept-button" onclick="client.submitLoginDetails(this.form)">Login</button>
+        </div>
+      </form>
+      <div class="or"></div>
+      <form class="creation">
+       <div class="instructions">Create a new account</div>
+        <div>
+            <label for="name">Prefered name:</label>
+            <input type="text" id="name" name="user_name">
+        </div>
+        <div>
+            <label for="email">Email address:</label>
+            <input type="text" id="email" name="user_email">
+        </div>
+        <div>
+            <button type="button" id="accept-button" onclick="client.submitLoginDetails(this.form)">Submit</button>
+        </div>
+      </form>
+    </div>
     `
     document.getElementById('accept-button').onclick = (form) => {
       this._submitLoginDetails(document.getElementById('name').value, document.getElementById('email').value)
@@ -73,6 +90,7 @@ class Client {
 
   async _showFrontPage(){
     this.element.innerHTML = "<h1>Loading...</h1>"
+
     let accountDetails, mailinglists
     try {
       accountDetails = await this._getAccountRequest()
@@ -83,14 +101,14 @@ class Client {
     this.account = accountDetails;
 
     try {
-      mailinglists = await this._getMailingLists()
+      mailinglists = await this._getAllMailingLists()
     } catch (error) {
       console.error(error);
       throw new Error(error);
     }
 
     let mailinglistRows = mailinglists.map(entry => {
-      return `<tr><td>${entry.id}</td><td>${entry.name}</td><td>${entry.subscribers}</td></tr>`
+      return `<tr id="mailing-list-${entry.id}"><td>${entry.id}</td><td>${entry.name}</td><td>${entry.subscribers}</td></tr>`
     })
 
     this.element.innerHTML = `
@@ -108,7 +126,31 @@ class Client {
         ${mailinglistRows.join('\n')}
       </table>
     `
+    for (let list of mailinglists) {
+      document.getElementById(`mailing-list-${list.id}`).onclick = () => {this._showMailingListPage(list.id)}
+    }
 
+  }
+
+  async _showMailingListPage(listId){
+    this.element.innerHTML = '<h1>Loading list details...</h1>'
+
+    let mailingList = await this._getMailingList(listId);
+    console.log(mailingList);
+    let isOdd = false;
+    let subscribersHtml = mailingList.subscribers.map(entry => {
+      let fieldsHtml = entry.fields.map(field => {
+        return `<tr><td>${field.name}</td><td>${field.value}</td></tr>`
+      }).join('\n');
+      isOdd = !isOdd
+      return `<div class="${isOdd?"odd":"even"}"><span class="subscriber-prop">Name:</span> ${entry.name}<br><span class="subscriber-prop">Email:</span> ${entry.email}<br><span class="subscriber-prop">State:</span>${entry.state}Fields: <table>${fieldsHtml}</table></div>`
+    }).join('\n');
+
+    this.element.innerHTML = `
+    <div class="mailingList-heading">Details for<br>
+    <div class="list-name">${mailingList.id}. ${mailingList.name}</div></div>
+    <div class="subscriber-list">${subscribersHtml}</div>
+    `
   }
 
   async _submitLoginDetails(name, email){
@@ -186,7 +228,7 @@ class Client {
     require('fs').writeFile("./config", config)
   }
 
-  _getMailingLists(){
+  _getAllMailingLists(){
     return request({
       url: '/mailinglists/',
       baseUrl: this.config.api_endpoint,
@@ -196,6 +238,15 @@ class Client {
     }).then( result => {return result.mailinglists} )
   }
 
+  _getMailingList(listId){
+    return request({
+      url: `/mailinglists/${listId}/`,
+      baseUrl: this.config.api_endpoint,
+      headers: {apikey : this.config.secret, Email: this.config.email},
+      method: 'get',
+      json: true
+    })
+  }
 }
 
 module.exports = Client
