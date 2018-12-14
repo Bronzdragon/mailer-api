@@ -1,0 +1,37 @@
+body, html {
+  font: 1em sans-serif;
+}
+
+form {
+  margin: 0 auto;
+  width: 60%;
+  padding: 1em;
+}
+
+label {
+  display: inline-block;
+  width: 150px;
+  text-align: right;
+}
+button {
+  margin-top: 5px;
+  margin-left: 154px;
+}
+
+input {
+  font: 1em sans-serif;
+  width: auto;
+  box-sizing: border-box;
+  border: 1px solid #999;
+}
+#error-banner{
+  color: red;
+  background-color: hsla(0, 50%, 80%, .3);
+  border-left: 1px solid red;
+  padding: 0.2em 1em;
+}
+
+td {
+    text-align: center;
+    min-width: 3.5em;
+}

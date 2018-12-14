@@ -1,0 +1,5 @@
+{
+  "api_endpoint": "http://mail-api:8000/api/",
+  "email": "Walter.Bormans@gmail.com",
+  "secret": "yBwDb0GYMmaUVjDzjHBBiQp6FfiLMVrZ"
+}

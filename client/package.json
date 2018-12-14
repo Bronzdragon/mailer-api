@@ -3,13 +3,15 @@
   "scripts": {
     "start": "node_modules\\electron\\dist\\electron ."
   },
-  "devDependencies": {
-    "electron-debug": "^2.0.0"
-  },
   "name": "mailer-api-client",
   "version": "1.0.0",
   "dependencies": {
-    "electron": "^3.0.7"
+    "electron": "^3.0.7",
+    "request": "^2.88.0",
+    "request-promise": "^4.2.2"
+  },
+  "devDependencies": {
+    "electron-debug": "^2.0.0"
   },
   "repository": {
     "type": "git",
