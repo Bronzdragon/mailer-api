@@ -26,5 +26,5 @@ You cannot delete your account without the right key or setting the `confirmDele
 ## Running tests
 Prerequisite: [Node](https://nodejs.org/).
 
-1. Ensure the server is up and running. (See: [Setting up the server](#Setting up the server)).
+1. Ensure the server is up and running. (See: [Setting up the server](#Setting-up-the-server)).
 2. In the repository directory, run `npm test`.
