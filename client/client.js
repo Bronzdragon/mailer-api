@@ -145,18 +145,53 @@ class Client {
       return `<div id="subscriber-list-${entry.id}" class="${isOdd?"odd":"even"}"><span class="subscriber-prop">ID:</span> ${entry.id}<br><span class="subscriber-prop">Name:</span> ${entry.name}<br><span class="subscriber-prop">Email:</span> ${entry.email}<br><span class="subscriber-prop">State:</span> ${entry.state}<br><span class="subscriber-prop">Fields:</span> <table>${fieldsHtml}</table></div>`
     }).join('\n')
 
-    this.element.innerHTML = `
-    <div id="back-button">↩</div>
-    <div class="mailingList-heading">Details for<br>
-    <div class="list-name">${mailingList.id}. ${mailingList.name}</div></div>
-    <div class="subscriber-list">${subscribersHtml}</div>`
+    const fragment = document.createDocumentFragment()
+    const backButton = document.createElement('div'); backButton.textContent='↩'; backButton.id = 'back-button'
+    const mailListHeading = document.createElement('div'); mailListHeading.classList.add('mailing-list-heading'); mailListHeading.textContent = 'Details for'
+    mailListHeading.appendChild(document.createElement('br'))
+    mailListHeading.appendChild(getNonEditableListName(mailingList))
+    const subscriberList = document.createElement('div'); subscriberList.classList.add('subscriber-list'); subscriberList.innerHTML = subscribersHtml
 
-    document.getElementById("back-button").onclick = () => {
+    fragment.appendChild(backButton); fragment.appendChild(mailListHeading); fragment.appendChild(subscriberList);
+    this.element.innerHTML = ''
+    this.element.appendChild(fragment)
+
+    document.getElementById("back-button").addEventListener('click', () => {
       this._showFrontPage()
-    }
+    })
+    // document.getElementById("list-name").replaceWith(getNonEditableListName(mailingList))
 
     for (let subscriber of mailingList.subscribers) {
       document.getElementById(`subscriber-list-${subscriber.id}`).onclick = () => {this._showSubscriberEditingPage(listId, subscriber.id)}
+    }
+
+    function getEditableListName(mailingList) {
+      let element = document.createElement('input')
+      element.classList.add('list-name')
+      element.type = 'text'
+      element.value = mailingList.name
+      element.addEventListener('submit', event => {
+
+      })
+      element.addEventListener('keyup', event => {
+        if (event.keyCode === 13) {
+          mailingList.name = event.target.value
+          element.replaceWith(getNonEditableListName(mailingList))
+          event.preventDefault()
+        }
+      })
+      return element
+    }
+    function getNonEditableListName(mailingList) {
+      let element = document.createElement('div')
+      element.classList.add('list-name')
+
+      element.textContent = `${mailingList.id}. ${mailingList.name} ✎`
+      // element.appendChild(editButton)
+      element.addEventListener('click', event => {
+        element.replaceWith(getEditableListName(mailingList))
+      })
+      return element
     }
   }
 

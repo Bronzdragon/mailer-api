@@ -63,12 +63,12 @@ input {
   text-align: center;
   padding-bottom: 10px;
 }
-.mailingList-heading{
+.mailing-list-heading{
   margin-top: 1em;
   margin-bottom: 2em;
   font-size: 1.5em;
 }
-.mailingList-heading .list-name{
+.mailing-list-heading .list-name{
   font-size: 2em;
 }
 .odd, .even {
