@@ -225,7 +225,7 @@ class Client {
     const nameParagraph = createElement('p', 'name:')
     nameParagraph.appendChild(createElement('br'))
     const nameInput = createElement('input')
-    nameInput.type = 'text'; nameInput.value = subscriber.name; nameInput.placeholder="Please enter a name"
+    nameInput.type = 'text'; nameInput.value = subscriber.name; nameInput.placeholder="Please enter a name"; nameInput.id = 'subscriber-form-name'
     nameParagraph.appendChild(nameInput)
 
     form.appendChild(nameParagraph)
@@ -233,7 +233,7 @@ class Client {
     const emailParagraph = createElement('p', 'email:')
     emailParagraph.appendChild(createElement('br'))
     const emailInput = createElement('input')
-    emailInput.type = 'text'; emailInput.value = subscriber.email; emailInput.placeholder="Please enter an email address"
+    emailInput.type = 'text'; emailInput.value = subscriber.email; emailInput.placeholder="Please enter an email address"; emailInput.id = 'subscriber-form-email'
     emailParagraph.appendChild(emailInput)
 
     form.appendChild(emailParagraph)
@@ -241,6 +241,7 @@ class Client {
     const stateParagraph = createElement('p', 'state:')
     stateParagraph.appendChild(createElement('br'))
     const stateSelect = createElement('select')
+    stateSelect.id = 'subscriber-form-state'
     for (let state of ['active', 'unsubscribed', 'junk', 'bounced', 'unconfirmed']) {
       let option = createElement('option', state)
       option.value = state
@@ -260,6 +261,34 @@ class Client {
       event.preventDefault()
     })
     form.appendChild(newFieldButton)
+
+    const saveButton = document.createElement('button')
+    saveButton.type = 'button'
+    saveButton.textContent = 'Save'
+    saveButton.addEventListener('click', event => {
+      let fieldList = []
+      for (var i = 0; i < subscriber.fields.length; i++) {
+        let name = document.getElementById(`field-name-${i}`).value
+        let value = document.getElementById(`field-value-${i}`)
+        if (name && value) {
+          fieldList.push({
+            name: name,
+            value: value
+          })
+        }
+      }
+
+      let newSubscriber = {
+        name: document.getElementById('subscriber-form-name').value,
+        email: document.getElementById('subscriber-form-email').value,
+        state: document.getElementById('subscriber-form-state').value,
+        fields: subscriber.fields
+      }
+
+      this._saveSubscriber(subscriberId, listId, newSubscriber);
+
+    })
+    form.appendChild(saveButton)
 
 
     buildFieldList(subscriber.fields)
@@ -314,8 +343,7 @@ class Client {
 
       function getFieldParagraph(field, index) {
         const fieldParagraph = createElement("p", null, `field-p-${index}`)
-        const valueInput = getValueElement(field.value)
-        valueInput.id = `field-value-input-${index}`
+        const valueInput = getValueElement(field.value, null, `field-value-${index}`)
         const nameInput = createElement('input', null, `field-name-${index}`)
         nameInput.type = "text"; nameInput.value = field.name
         const typeDropdown = getTypeDropdown(getType(field.value))
@@ -343,6 +371,16 @@ class Client {
           }
           // console.log(event);
           fieldParagraph.replaceWith(getFieldParagraph(field, index))
+        })
+        nameInput.addEventListener('change', event => {
+          field.name = event.target.value
+        })
+        valueInput.addEventListener('change', event => {
+          if(typeDropdown.value === 'date'){
+            field.value = new Date(event.target.value).toJSON()
+          } else {
+            field.value = event.target.value
+          }
         })
 
         return fieldParagraph
@@ -411,6 +449,29 @@ class Client {
         code: error.statusCode,
         error: error.error.error
       }
+    })
+  }
+
+  _saveSubscriber(subscriberId, listId, sub) {
+    // console.log('Saving this: ', sub);
+    return request({
+      url: `/mailinglists/${listId}/subscribers/${subscriberId}/`,
+      baseUrl: this.config.api_endpoint,
+      headers: {apikey : this.config.secret, Email: this.config.email},
+      method: 'put',
+      body: sub,
+      json: true
+    })
+  }
+
+  _saveMailinglistName(name, listId){
+    return request({
+      method: 'patch',
+      url: `/mailinglists/${listId}/`,
+      baseUrl: this.config.api_endpoint,
+      headers: {apikey : this.config.secret, Email: this.config.email},
+      body: {name: name},
+      json: true
     })
   }
 
