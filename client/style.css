@@ -34,6 +34,10 @@ input {
   padding: 0.2em 1em;
 }
 
+#back-button{
+  font-size: 3em;
+}
+
 .both {
     width: 80%;
     margin: auto;
@@ -71,10 +75,10 @@ input {
   padding: 1em;
 }
 .odd {
-  background-color: hsla(0, 0%, 0%, 0.1)
+  background-color: hsla(0, 0%, 0%, 0.1);
 }
 .even {
-  background-color: hsla(0, 0%, 100%, 0.1)
+  background-color: hsla(0, 0%, 100%, 0.1);
 }
 .subscriber-prop {
   font-weight: bolder;
