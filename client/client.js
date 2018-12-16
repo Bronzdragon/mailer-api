@@ -26,14 +26,14 @@ class Client {
         <div class="instructions">Log in with existing account</div>
         <div>
           <label for="email">Registered email:</label>
-          <input type="text" id="email" name="user_email">
+          <input type="text" id="login-email" name="user_email">
         </div>
         <div>
           <label for="token">Your token:</label>
-          <input type="text" id="token" name="user_token">
+          <input type="text" id="login-token" name="user_token">
         </div>
         <div>
-          <button type="button" id="accept-button" onclick="client.submitLoginDetails(this.form)">Login</button>
+          <button type="button" id="login-button">Login</button>
         </div>
       </form>
       <div class="or"></div>
@@ -41,51 +41,32 @@ class Client {
        <div class="instructions">Create a new account</div>
         <div>
             <label for="name">Prefered name:</label>
-            <input type="text" id="name" name="user_name">
+            <input type="text" id="register-name" name="user_name">
         </div>
         <div>
             <label for="email">Email address:</label>
-            <input type="text" id="email" name="user_email">
+            <input type="text" id="register-email" name="user_email">
         </div>
         <div>
-            <button type="button" id="accept-button" onclick="client.submitLoginDetails(this.form)">Submit</button>
+            <button type="button" id="register-button">Submit</button>
         </div>
       </form>
-    </div>
-    `
-    document.getElementById('accept-button').onclick = (form) => {
-      this._submitLoginDetails(document.getElementById('name').value, document.getElementById('email').value)
-    }
-    document.getElementById('show-token-form').onclick = () => {
-      this._promptToken()
-    }
-  }
+    </div>`
 
-  _promptToken() {
-    this.element.innerHTML = `
-    <div id="error-banner" style="display:none;"></div>
-    <form>
-      <div>
-        <label for="email">Registered email:</label>
-        <input type="text" id="email" name="user_email">
-      </div>
-      <div>
-        <label for="token">Your token:</label>
-        <input type="text" id="token" name="user_token">
-      </div>
-      <div>
-        <button type="button" id="accept-button" onclick="client.submitLoginDetails(this.form)">ok</button>
-      </div>
+    document.getElementById('login-button').addEventListener('click', event => {
+      event.preventDefault()
+      let email  = document.getElementById('login-email').value
+      let token = document.getElementById('login-token').value
+      return this._submitLoginDetails(email, token)
+    })
 
-    </form>
-    <a id="show-login-form" href="#">I have to create a new token.</a>
-    `
-    document.getElementById('accept-button').onclick = (form) => {
-      this._submitTokenDetails(document.getElementById('email').value, document.getElementById('token').value)
-    }
-    document.getElementById('show-login-form').onclick = () => {
-      this._promptLogin()
-    }
+    document.getElementById('register-button').addEventListener('click', async event => {
+      event.preventDefault()
+      let name  = document.getElementById('register-name').value
+      let email = document.getElementById('register-email').value
+      return this._submitregistrationDetails(name, email)
+    })
+
   }
 
   async _showFrontPage(){
@@ -454,7 +435,29 @@ class Client {
 
   }
 
-  async _submitLoginDetails(name, email){
+  async _submitLoginDetails(email, token){
+    let errorBanner = document.getElementById('error-banner')
+    let errorMessage = ""
+
+    if (!email) { errorMessage += "Please enter an email address.<br>" }
+    if (!token) { errorMessage += "Please enter a token.<br>" }
+
+    if (errorBanner.innerHTML) {
+      errorBanner.style.display = 'block'
+      errorBanner.innerHTML = errorMessage
+      return
+    } else {
+      errorBanner.style.display = 'none'
+    }
+
+    this.config.email = email
+    this.config.secret = token
+    this._saveConfigFile()
+
+    this._showFrontPage()
+  }
+
+  async _submitregistrationDetails(name, email){
     let errorBanner = document.getElementById('error-banner')
     let errorMessage = ""
 
@@ -479,6 +482,9 @@ class Client {
     this.account = result
     this.config.email = this.account.email
     this.config.secret = this.account.secret
+    this._saveConfigFile()
+
+    this._showFrontPage()
   }
 
   _submitTokenDetails(email, token){
@@ -570,7 +576,8 @@ class Client {
   }
 
   _saveConfigFile(config = this.config){
-    require('fs').writeFile("./config", config)
+    let jsonText = JSON.stringify(config)
+    require('fs').writeFile("./config.json", jsonText, err => {})
   }
 
   _getAllMailingLists(){
