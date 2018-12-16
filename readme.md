@@ -28,3 +28,9 @@ Prerequisite: [Node](https://nodejs.org/).
 
 1. Ensure the server is up and running. (See: [Setting up the server](#Setting-up-the-server)).
 2. In the repository directory, run `npm test`.
+
+## Running the client
+Prerequisite: [Node](https://nodejs.org/).
+
+1. In the client directory, run `npm install`
+2. in the client directory, run `npm start`
