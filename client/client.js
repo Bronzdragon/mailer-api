@@ -107,10 +107,21 @@ class Client {
       throw new Error(error)
     }
 
-    let mailinglistRows = mailinglists.map(entry => {
-      return `<tr id="mailing-list-${entry.id}"><td>${entry.id}</td><td>${entry.name}</td><td>${entry.subscribers}</td></tr>`
-    })
+    const getMailingListTable = (mailingLists) => {
+      const container = document.createElement('table')
+      container.innerHTML = `<th>ID</th><th>Name</th><th>Subscriber count</th>`
 
+      for (let list of mailinglists) {
+        const row = document.createElement('tr')
+        row.id = `mailing-list-${list.id}`
+        row.innerHTML += `<td>${list.id}</td><td>${list.name}</td><td>${list.subscribers}</td>`
+        row.addEventListener('click', () => {
+          this._showMailingListPage(list.id)
+        })
+        container.appendChild(row)
+      }
+      return container
+    }
     this.element.innerHTML = `
       <h1>Welcome, ${this.account.name}!</h1>
       <h3>Your account details:</h3>
@@ -121,61 +132,96 @@ class Client {
       </table>
 
       <h3>Your lists:</h3>
-      <table>
-        <th>ID</th><th>Name</th><th>Subscriber count</th>
-        ${mailinglistRows.join('\n')}
-      </table>
-    `
-    for (let list of mailinglists) {
-      document.getElementById(`mailing-list-${list.id}`).onclick = () => {this._showMailingListPage(list.id)}
-    }
+      <button id="new-list-button">New list</button>`
+
+    const mailingListTable = getMailingListTable(mailinglists)
+    this.element.appendChild(mailingListTable)
+    // this.element.appendChild(mailingListTable)
+
+    document.getElementById('new-list-button').addEventListener('click', async event => {
+      event.preventDefault()
+      let newListName = `new list ${mailinglists.length+1}`
+      console.log("Creating new list: ", newListName);
+      await this._addNewList(newListName)
+      mailinglists = await this._getAllMailingLists()
+
+      console.log("Replacing list!" , mailinglists);
+      mailingListTable.replaceWith(getMailingListTable(mailinglists))
+    })
 
   }
 
   async _showMailingListPage(listId){
     this.element.innerHTML = '<h1>Loading list details...</h1>'
 
+    const getSubscriberListElement = subscribers => {
+      const container = document.createElement('div')
+      this.isOdd = true
+      for (const subscriber of subscribers) {
+        let subElement = getSubscriberElement(subscriber)
+        subElement.classList.add(this.isOdd ? 'odd':'even')
+        container.appendChild(subElement)
+        this.isOdd = !this.isOdd
+      }
+      return container;
+    }
+
+    const getSubscriberElement = subscriber => {
+      const container = document.createElement('div')
+      const subTable = document.createElement('table')
+      subTable.innerHTML = `
+      <tr><td class="subscriber-prop">ID:   </td><td>${subscriber.id}   </td></tr>
+      <tr><td class="subscriber-prop">Name: </td><td>${subscriber.name} </td></tr>
+      <tr><td class="subscriber-prop">Email:</td><td>${subscriber.email}</td></tr>
+      <tr><td class="subscriber-prop">State:</td><td>${subscriber.state}</td></tr>`
+
+      const fieldTable = document.createElement('table')
+
+      for (const field of subscriber.fields) {
+        fieldTable.innerHTML += `<tr><td>${field.name}:</td><td>${field.value}</td></tr>`
+      }
+
+      container.appendChild(subTable); container.appendChild(fieldTable)
+      container.addEventListener('click', () => {this._showSubscriberEditingPage(listId, subscriber.id)})
+
+      return container;
+    }
+
     let mailingList = await this._getMailingList(listId)
-    let isOdd = false
-    let subscribersHtml = mailingList.subscribers.map(entry => {
-      let fieldsHtml = entry.fields.map(field => {
-        return `<tr><td>${field.name}</td><td>${field.value}</td></tr>`
-      }).join('\n')
-      isOdd = !isOdd
-      return `<div id="subscriber-list-${entry.id}" class="${isOdd?"odd":"even"}"><span class="subscriber-prop">ID:</span> ${entry.id}<br><span class="subscriber-prop">Name:</span> ${entry.name}<br><span class="subscriber-prop">Email:</span> ${entry.email}<br><span class="subscriber-prop">State:</span> ${entry.state}<br><span class="subscriber-prop">Fields:</span> <table>${fieldsHtml}</table></div>`
-    }).join('\n')
 
     const fragment = document.createDocumentFragment()
     const backButton = document.createElement('div'); backButton.textContent='↩'; backButton.id = 'back-button'
     const mailListHeading = document.createElement('div'); mailListHeading.classList.add('mailing-list-heading'); mailListHeading.textContent = 'Details for'
     mailListHeading.appendChild(document.createElement('br'))
     mailListHeading.appendChild(getNonEditableListName(mailingList))
-    const subscriberList = document.createElement('div'); subscriberList.classList.add('subscriber-list'); subscriberList.innerHTML = subscribersHtml
+    const newButton = document.createElement('button'); newButton.textContent = "New subscriber"
+    const subscriberList = getSubscriberListElement(mailingList.subscribers)
 
-    fragment.appendChild(backButton); fragment.appendChild(mailListHeading); fragment.appendChild(subscriberList);
+    fragment.appendChild(backButton); fragment.appendChild(mailListHeading); fragment.appendChild(newButton); fragment.appendChild(subscriberList)
     this.element.innerHTML = ''
     this.element.appendChild(fragment)
 
-    document.getElementById("back-button").addEventListener('click', () => {
+    backButton.addEventListener('click', () => {
       this._showFrontPage()
     })
-    // document.getElementById("list-name").replaceWith(getNonEditableListName(mailingList))
 
-    for (let subscriber of mailingList.subscribers) {
-      document.getElementById(`subscriber-list-${subscriber.id}`).onclick = () => {this._showSubscriberEditingPage(listId, subscriber.id)}
-    }
+    newButton.addEventListener('click', event => {
+      console.log("Adding subscriber to ", mailingList);
+      this._showSubscriberEditingPage(listId);
+    })
 
-    function getEditableListName(mailingList) {
+    const getEditableListName = (mailingList) => {
       let element = document.createElement('input')
       element.classList.add('list-name')
       element.type = 'text'
       element.value = mailingList.name
-      element.addEventListener('submit', event => {
-
-      })
       element.addEventListener('keyup', event => {
         if (event.keyCode === 13) {
           mailingList.name = event.target.value
+
+          console.log("This arg: ", this);
+
+          this._saveMailinglistName(mailingList.name, mailingList.id)
           element.replaceWith(getNonEditableListName(mailingList))
           event.preventDefault()
         }
@@ -213,7 +259,12 @@ class Client {
       return element
     }
 
-    const subscriber = await this._getSubscriber(listId, subscriberId)
+    let subscriber;
+    if (subscriberId) {
+      subscriber = await this._getSubscriber(listId, subscriberId)
+    } else {
+      subscriber = {name: '', email: '', state:'unconfirmed', fields: []}
+    }
     const fragment = document.createDocumentFragment()
 
     fragment.appendChild(createElement('div', '↩', 'back-button', [], 'click', () => {
@@ -265,7 +316,7 @@ class Client {
     const saveButton = document.createElement('button')
     saveButton.type = 'button'
     saveButton.textContent = 'Save'
-    saveButton.addEventListener('click', event => {
+    saveButton.addEventListener('click', async (event) => {
       let fieldList = []
       for (var i = 0; i < subscriber.fields.length; i++) {
         let name = document.getElementById(`field-name-${i}`).value
@@ -284,12 +335,16 @@ class Client {
         state: document.getElementById('subscriber-form-state').value,
         fields: subscriber.fields
       }
+      if(subscriberId){
+        this._saveSubscriber(subscriberId, listId, newSubscriber);
+      } else {
+        await this._saveNewSubscriber(listId, newSubscriber)
+        this._showMailingListPage(listId)
+      }
 
-      this._saveSubscriber(subscriberId, listId, newSubscriber);
 
     })
     form.appendChild(saveButton)
-
 
     buildFieldList(subscriber.fields)
 
@@ -378,6 +433,8 @@ class Client {
         valueInput.addEventListener('change', event => {
           if(typeDropdown.value === 'date'){
             field.value = new Date(event.target.value).toJSON()
+          } else if (typeDropdown.value === 'true/false') {
+            field.value = event.target.checked
           } else {
             field.value = event.target.value
           }
@@ -452,14 +509,24 @@ class Client {
     })
   }
 
-  _saveSubscriber(subscriberId, listId, sub) {
-    // console.log('Saving this: ', sub);
+  _saveSubscriber(subscriberId, listId, subscriber) {
     return request({
       url: `/mailinglists/${listId}/subscribers/${subscriberId}/`,
       baseUrl: this.config.api_endpoint,
       headers: {apikey : this.config.secret, Email: this.config.email},
       method: 'put',
-      body: sub,
+      body: subscriber,
+      json: true
+    })
+  }
+
+  _saveNewSubscriber(listId, subscriber){
+    return request({
+      url: `/mailinglists/${listId}/subscribers/`,
+      baseUrl: this.config.api_endpoint,
+      headers: {apikey : this.config.secret, Email: this.config.email},
+      method: 'post',
+      body: subscriber,
       json: true
     })
   }
@@ -468,6 +535,17 @@ class Client {
     return request({
       method: 'patch',
       url: `/mailinglists/${listId}/`,
+      baseUrl: this.config.api_endpoint,
+      headers: {apikey : this.config.secret, Email: this.config.email},
+      body: {name: name},
+      json: true
+    })
+  }
+
+  _addNewList(name) {
+    return request({
+      method: 'post',
+      url: `/mailinglists/`,
       baseUrl: this.config.api_endpoint,
       headers: {apikey : this.config.secret, Email: this.config.email},
       body: {name: name},
